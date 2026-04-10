@@ -20,6 +20,28 @@
 #ifndef CONF_GENERAL_H_
 #define CONF_GENERAL_H_
 
+// --- 插入的代码开始 ---
+#ifndef HW_SOURCE
+#define HW_SOURCE "hwconf/trampa/75_300/hw_75_300_core.c"  // <--- 注意这里有 _core
+#endif
+
+#ifndef HW_HEADER
+#define HW_HEADER "hwconf/trampa/75_300/hw_75_300.h"       // <--- 注意这里没有 _core
+#endif
+
+#ifndef ARM_GCC_VERSION
+#define ARM_GCC_VERSION "13.3.1"
+#endif
+
+#ifndef GIT_COMMIT_HASH
+#define GIT_COMMIT_HASH "72V_450A_ABI"
+#endif
+
+#ifndef GIT_BRANCH_NAME
+#define GIT_BRANCH_NAME "release_6_05"
+#endif
+// --- 插入的代码结束 ---
+
 // Firmware version
 #define FW_VERSION_MAJOR			6
 #define FW_VERSION_MINOR			05
