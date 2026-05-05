@@ -968,7 +968,7 @@ uint8_t conf_general_calculate_deadtime(float deadtime_ns, float core_clock_freq
  * @return
  * Fault code
  */
-int conf_general_measure_flux_linkage_openloop(float current, float duty,
+int conf_general_measure_flux_linkage_openloop(float current, float duty, // 测量电机的磁链
 		float erpm_per_sec, float res, float ind, float *linkage,
 		float *linkage_undriven, float *undriven_samples, bool *result) {
 
@@ -1270,7 +1270,7 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty,
  * @return
  * The fault code
  */
-int conf_general_autodetect_apply_sensors_foc(float current,
+int conf_general_autodetect_apply_sensors_foc(float current, 
 											  bool store_mcconf_on_success, bool send_mcconf_on_success, int *result) {
 	*result = -1;
 	int fault = FAULT_CODE_NONE;
@@ -1668,7 +1668,7 @@ static void detect_sensors_task(void *arg) {
  *  -x: see conf_general_autodetect_apply_sensors_foc faults
  *  -100 + fault: Fault code that occured during detection see "mc_fault_code"
  */
-int conf_general_detect_apply_all_foc(float max_power_loss,
+int conf_general_detect_apply_all_foc(float max_power_loss, // 测量传感器偏置角，电机R、L, 磁链，计算电流限制
 									  bool store_mcconf_on_success, bool send_mcconf_on_success) {
 	int result = -1;
 

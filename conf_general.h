@@ -205,10 +205,10 @@ void conf_general_read_mc_configuration(mc_configuration *conf, bool is_motor_2)
 bool conf_general_store_mc_configuration(mc_configuration *conf, bool is_motor_2);
 bool conf_general_detect_motor_param(float current, float min_rpm, float low_duty,
 									 float *int_limit, float *bemf_coupling_k, int8_t *hall_table, int *hall_res);
-bool conf_general_measure_flux_linkage(float current, float duty,
+bool conf_general_measure_flux_linkage(float current, float duty, // 测量电机的磁链
 									   float min_erpm, float res, float *linkage);
 uint8_t conf_general_calculate_deadtime(float deadtime_ns, float core_clock_freq);
-int conf_general_measure_flux_linkage_openloop(float current, float duty,
+int conf_general_measure_flux_linkage_openloop(float current, float duty, // 测量电机的磁链，使用开环FOC控制
 											   float erpm_per_sec, float res, float ind, float *linkage,
 											   float *linkage_undriven, float *undriven_samples, bool *result);
 int conf_general_autodetect_apply_sensors_foc(float current,
