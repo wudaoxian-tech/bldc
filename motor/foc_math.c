@@ -20,7 +20,7 @@
 #include "foc_math.h"
 #include "utils_math.h"
 #include <math.h>
-
+//  无感 FOC 观测器，输入电压、电流，输出转子角度
 // See http://cas.ensmp.fr/~praly/Telechargement/Journaux/2010-IEEE_TPEL-Lee-Hong-Nam-Ortega-Praly-Astolfi.pdf
 void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_beta,
 		float dt, observer_state *state, float *phase, motor_all_state_t *motor) {
@@ -220,7 +220,7 @@ void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_bet
 	// Then the state->x1 and state->x2 (which are the alpha and beta fluxes) are set as lambda*sin and lambda*cos
 	// The d flux each time would have a residual after transform from ab to dq. This can be used as an input to the flux estimator
 }
-
+// 锁相环PLL处理角度和角速度
 void foc_pll_run(float phase, float dt, float *phase_var,
 					float *speed_var, mc_configuration *conf) {
 	UTILS_NAN_ZERO(*phase_var);
@@ -242,7 +242,8 @@ void foc_pll_run(float phase, float dt, float *phase_var,
  * @param tBout PWM duty cycle phase B
  * @param tCout PWM duty cycle phase C
  */
-void foc_svm(float alpha, float beta, uint32_t PWMFullDutyCycle,
+// 转换成电机A/B/C 三相的PWM占空比数值，未有过调制处理
+ void foc_svm(float alpha, float beta, uint32_t PWMFullDutyCycle,
 				uint32_t* tAout, uint32_t* tBout, uint32_t* tCout, uint32_t *svm_sector) {
 	uint32_t sector;
 
@@ -563,7 +564,7 @@ void foc_run_pid_control_speed(bool index_found, float dt, motor_all_state_t *mo
 
 	motor->m_iq_set = output * conf_now->lo_current_max * conf_now->l_current_max_scale;
 }
-
+// 根据电机转速，自动选择用[编码器角度]还是[无感观测器角度]，带滞回防抖动，低速用编码器，高速切无感
 float foc_correct_encoder(float obs_angle, float enc_angle, float speed,
 							 float sl_erpm, motor_all_state_t *motor) {
 	float rpm_abs = fabsf(RADPS2RPM_f(speed));
@@ -582,13 +583,13 @@ float foc_correct_encoder(float obs_angle, float enc_angle, float speed,
 
 	return motor->m_using_encoder ? enc_angle : obs_angle;
 }
-
+// 把霍尔传感器[60°一跳]的原始角度，变成FOC控制需要的[连续、平滑、精准]的转子角度，同时实现低速用霍尔、高速切无感的无缝切换
 float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall_val) {
 	mc_configuration *conf_now = motor->m_conf;
 	motor->m_hall_dt_diff_now += dt;
 
-	float rpm_abs = fabsf(RADPS2RPM_f(motor->m_pll_speed));
-	float rad_per_sec_hall = (M_PI / 3.0) / motor->m_hall_dt_diff_last;
+	float rpm_abs = fabsf(RADPS2RPM_f(motor->m_pll_speed)); // 把rad/s转换成rpm
+	float rad_per_sec_hall = (M_PI / 3.0) / motor->m_hall_dt_diff_last; // 60°电气角除上两次霍尔跳变的时间间隔
 	float rpm_abs_hall = fabsf(RADPS2RPM_f(rad_per_sec_hall));
 
 	motor->m_using_hall = rpm_abs < conf_now->foc_sl_erpm;
@@ -654,7 +655,7 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 			}
 		}
 
-		utils_norm_angle_rad((float*)&motor->m_ang_hall);
+		utils_norm_angle_rad((float*)&motor->m_ang_hall);	// 归一化成-PI到PI之间
 
 		// Limit hall sensor rate of change. This will reduce current spikes in the current controllers when the angle estimation
 		// changes fast.

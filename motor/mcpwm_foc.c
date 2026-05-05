@@ -53,16 +53,16 @@ static volatile motor_all_state_t m_motor_2;
 static volatile int m_isr_motor = 0;
 
 // Private functions
-static void control_current(motor_all_state_t *motor, float dt);
-static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float mod_beta);
-static void stop_pwm_hw(motor_all_state_t *motor);
-static void start_pwm_hw(motor_all_state_t *motor);
-static void full_brake_hw(motor_all_state_t *motor);
-static void terminal_tmp(int argc, const char **argv);
-static void terminal_plot_hfi(int argc, const char **argv);
-static void timer_update(motor_all_state_t *motor, float dt);
-static void input_current_offset_measurement( void );
-static void hfi_update(volatile motor_all_state_t *motor, float dt);
+static void control_current(motor_all_state_t *motor, float dt);	// FOC电流控制，输入电流设定值和实际电流，输出PWM占空比
+static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float mod_beta); // 根据输入的alpha和beta调制值，更新电压矢量的alpha和beta分量
+static void stop_pwm_hw(motor_all_state_t *motor); // 停止PWM输出
+static void start_pwm_hw(motor_all_state_t *motor); // 启动PWM输出
+static void full_brake_hw(motor_all_state_t *motor); // 通过将所有PWM占空比设置为100%来实现全制动
+static void terminal_tmp(int argc, const char **argv); // 终端命令，用于调试和测试
+static void terminal_plot_hfi(int argc, const char **argv); // 终端命令，用于调试和测试HFI相关的参数
+static void timer_update(motor_all_state_t *motor, float dt); // 定时器更新函数，处理一些定时相关的任务，如PID控制、HFI更新等
+static void input_current_offset_measurement( void ); // 输入电流偏移测量函数，用于测量和校正电流传感器的偏移
+static void hfi_update(volatile motor_all_state_t *motor, float dt); // HFI更新函数，处理高频注入相关的计算和状态更新
 
 // Threads
 static THD_WORKING_AREA(timer_thread_wa, 512);

@@ -55,35 +55,35 @@ uint16_t utils_median_filter_uint16_run(uint16_t *buffer,
 void utils_rotate_vector3(float *input, float *rotation, float *output, bool reverse);
 
 // Return the sign of the argument. -1.0 if negative, 1.0 if zero or positive.
-#define SIGN(x)				(((x) < 0.0) ? -1.0 : 1.0)
+#define SIGN(x)				(((x) < 0.0) ? -1.0 : 1.0) // 返回参数的符号，负数返回-1.0，零或正数返回1.0
 
 // Squared
-#define SQ(x)				((x) * (x))
+#define SQ(x)				((x) * (x))	// 平方
 
 // Two-norm of 2D vector
 //#define NORM2(x,y)		(sqrt(SQ(x) + SQ(y)))
-#define NORM2_f(x,y)		(sqrtf(SQ(x) + SQ(y)))
+#define NORM2_f(x,y)		(sqrtf(SQ(x) + SQ(y))) // 2D向量的二范数，即向量的长度，也即两个数的平方和的平方根
 
 // nan and infinity check for floats
-#define UTILS_IS_INF(x)		((x) == (1.0 / 0.0) || (x) == (-1.0 / 0.0))
-#define UTILS_IS_NAN(x)		((x) != (x))
-#define UTILS_NAN_ZERO(x)	(x = UTILS_IS_NAN(x) ? 0.0 : x)
+#define UTILS_IS_INF(x)		((x) == (1.0 / 0.0) || (x) == (-1.0 / 0.0)) // 是否为正无穷或负无穷
+#define UTILS_IS_NAN(x)		((x) != (x)) // 是否为NaN，NaN不等于自己
+#define UTILS_NAN_ZERO(x)	(x = UTILS_IS_NAN(x) ? 0.0 : x) // 如果是NaN就置零 
 
 // Handy conversions for radians/degrees and RPM/radians-per-second
-#define DEG2RAD_f(deg) ((deg) * (float)(M_PI / 180.0))
-#define RAD2DEG_f(rad) ((rad) * (float)(180.0 / M_PI))
-#define RPM2RADPS_f(rpm) ((rpm) * (float)((2.0 * M_PI) / 60.0))
-#define RADPS2RPM_f(rad_per_sec) ((rad_per_sec) * (float)(60.0 / (2.0 * M_PI)))
+#define DEG2RAD_f(deg) ((deg) * (float)(M_PI / 180.0)) // 角度转弧度
+#define RAD2DEG_f(rad) ((rad) * (float)(180.0 / M_PI)) // 弧度转角度
+#define RPM2RADPS_f(rpm) ((rpm) * (float)((2.0 * M_PI) / 60.0)) // 转速转角速度
+#define RADPS2RPM_f(rad_per_sec) ((rad_per_sec) * (float)(60.0 / (2.0 * M_PI))) // 角速度转转速
 
 #ifndef MIN
-#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MIN(a,b) (((a)<(b))?(a):(b)) // 返回较小值
 #endif
 #ifndef MAX
-#define MAX(a,b) (((a)>(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b)) // 返回较大值
 #endif
 
 // For double precision literals
-#define D(x) 				((double)x##L)
+#define D(x) 				((double)x##L) // 转换成double类型的字面量
 
 /**
  * A simple low pass filter.
@@ -97,7 +97,7 @@ void utils_rotate_vector3(float *input, float *rotation, float *output, bool rev
  * @param filter_constant
  * Filter constant. Range 0.0 to 1.0, where 1.0 gives the unfiltered value.
  */
-#define UTILS_LP_FAST(value, sample, filter_constant)	(value -= (filter_constant) * ((value) - (sample)))
+#define UTILS_LP_FAST(value, sample, filter_constant)	(value -= (filter_constant) * ((value) - (sample))) // 低通滤波器，filter_constant越大，响应越快，filter_constant=1时没有滤波效果
 
 /**
  * A fast approximation of a moving average filter with N samples. See
@@ -126,7 +126,7 @@ extern const float utils_tab_cos_32_1[];
 extern const float utils_tab_cos_32_2[];
 
 // Inline functions
-static inline void utils_step_towards(float *value, float goal, float step) {
+static inline void utils_step_towards(float *value, float goal, float step) {	// 以step的步长，把value向goal靠近
     if (*value < goal) {
         if ((*value + step) < goal) {
             *value += step;
@@ -148,7 +148,7 @@ static inline void utils_step_towards(float *value, float goal, float step) {
  * @param angle
  * The angle to normalize.
  */
-static inline void utils_norm_angle(float *angle) {
+static inline void utils_norm_angle(float *angle) { // 归一化成0到360之间
 	*angle = fmodf(*angle, 360.0);
 
 	if (*angle < 0.0) {
@@ -163,12 +163,12 @@ static inline void utils_norm_angle(float *angle) {
  * The angle to normalize in radians.
  * WARNING: Don't use too large angles.
  */
-static inline void utils_norm_angle_rad(float *angle) {
+static inline void utils_norm_angle_rad(float *angle) {	// 归一化成-PI到PI之间
 	while (*angle < -M_PI) { *angle += 2.0 * M_PI; }
 	while (*angle >=  M_PI) { *angle -= 2.0 * M_PI; }
 }
 
-static inline void utils_truncate_number(float *number, float min, float max) {
+static inline void utils_truncate_number(float *number, float min, float max) {	// 截断到[min, max]范围内
 	if (*number > max) {
 		*number = max;
 	} else if (*number < min) {
@@ -176,7 +176,7 @@ static inline void utils_truncate_number(float *number, float min, float max) {
 	}
 }
 
-static inline void utils_truncate_number_int(int *number, int min, int max) {
+static inline void utils_truncate_number_int(int *number, int min, int max) {	// 截断到[min, max]范围内
 	if (*number > max) {
 		*number = max;
 	} else if (*number < min) {
@@ -184,7 +184,7 @@ static inline void utils_truncate_number_int(int *number, int min, int max) {
 	}
 }
 
-static inline void utils_truncate_number_uint32(uint32_t *number, uint32_t min, uint32_t max) {
+static inline void utils_truncate_number_uint32(uint32_t *number, uint32_t min, uint32_t max) {	// 截断到[min, max]范围内
 	if (*number > max) {
 		*number = max;
 	} else if (*number < min) {
@@ -192,7 +192,7 @@ static inline void utils_truncate_number_uint32(uint32_t *number, uint32_t min, 
 	}
 }
 
-static inline void utils_truncate_number_abs(float *number, float max) {
+static inline void utils_truncate_number_abs(float *number, float max) { // 截断到[-max, max]范围内
 	if (*number > max) {
 		*number = max;
 	} else if (*number < -max) {
@@ -200,11 +200,11 @@ static inline void utils_truncate_number_abs(float *number, float max) {
 	}
 }
 
-static inline float utils_map(float x, float in_min, float in_max, float out_min, float out_max) {
+static inline float utils_map(float x, float in_min, float in_max, float out_min, float out_max) { // 线性映射，把x从[in_min, in_max]映射到[out_min, out_max]
 	return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
-static inline int utils_map_int(int x, int in_min, int in_max, int out_min, int out_max) {
+static inline int utils_map_int(int x, int in_min, int in_max, int out_min, int out_max) {	// 线性映射，把x从[in_min, in_max]映射到[out_min, out_max]，并且结果是整数
 	return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
 }
 
@@ -223,7 +223,7 @@ static inline int utils_map_int(int x, int in_min, int in_max, int out_min, int 
  * @return
  * True if saturation happened, false otherwise
  */
-static inline bool utils_saturate_vector_2d(float *x, float *y, float max) {
+static inline bool utils_saturate_vector_2d(float *x, float *y, float max) { // 截断到[-max, max]范围内
 	bool retval = false;
 	float mag = NORM2_f(*x, *y);
 	max = fabsf(max);

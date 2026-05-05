@@ -27,7 +27,7 @@
  * outside of the range it will be less truncated to the closest
  * angle. Angle units: Degrees
  */
-float utils_map_angle(float angle, float min, float max) {
+float utils_map_angle(float angle, float min, float max) { // 将angle从[min, max]范围映射到[0, 1]范围内，如果angle不在[min, max]范围内，则将其截断到最近的边界值。角度单位为度
 	if (max == min) {
 		return -1;
 	}
@@ -54,7 +54,7 @@ float utils_map_angle(float angle, float min, float max) {
  * Truncate absolute values less than tres to zero. The value
  * tres will be mapped to 0 and the value max to max.
  */
-void utils_deadband(float *value, float tres, float max) {
+void utils_deadband(float *value, float tres, float max) { // 截断绝对值小于tres的值为零，tres映射到0，max映射到max
 	if (fabsf(*value) < tres) {
 		*value = 0.0;
 	} else {
@@ -76,7 +76,7 @@ void utils_deadband(float *value, float tres, float max) {
  * @return
  * The difference between the angles
  */
-float utils_angle_difference(float angle1, float angle2) {
+float utils_angle_difference(float angle1, float angle2) { // 获取两个角度之间的差值，结果总是介于-180和+180度之间
 	float difference = angle1 - angle2;
 	while (difference < -180.0) difference += 2.0 * 180.0;
 	while (difference > 180.0) difference -= 2.0 * 180.0;
@@ -92,7 +92,7 @@ float utils_angle_difference(float angle1, float angle2) {
  * @return
  * The difference between the angles in radians
  */
-float utils_angle_difference_rad(float angle1, float angle2) {
+float utils_angle_difference_rad(float angle1, float angle2) { // 获取两个角度之间的差值，结果总是介于-π和+π弧度之间
 	float difference = angle1 - angle2;
 	while (difference < -M_PI) difference += 2.0 * M_PI;
 	while (difference > M_PI) difference -= 2.0 * M_PI;
@@ -114,7 +114,7 @@ float utils_angle_difference_rad(float angle1, float angle2) {
  * @return
  * The average angle.
  */
-float utils_avg_angles_rad_fast(float *angles, float *weights, int angles_num) {
+float utils_avg_angles_rad_fast(float *angles, float *weights, int angles_num) { // 计算多个角度的平均值
 	float s_sum = 0.0;
 	float c_sum = 0.0;
 
@@ -143,7 +143,7 @@ float utils_avg_angles_rad_fast(float *angles, float *weights, int angles_num) {
  * be a1 and if it is 0.0 the result will be a2.
  *
  */
-float utils_interpolate_angles_rad(float a1, float a2, float weight_a1) {
+float utils_interpolate_angles_rad(float a1, float a2, float weight_a1) { // 在弧度范围内插值两个角度并归一化结果到-π到π
 	while ((a1 - a2) > M_PI) a2 += 2.0 * M_PI;
 	while ((a2 - a1) > M_PI) a1 += 2.0 * M_PI;
 

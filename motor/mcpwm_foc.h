@@ -25,7 +25,7 @@
 #include <stdbool.h>
 
 // Functions
-void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2);
+void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2); // 初始化FOC控制器，输入两个电机的配置结构体指针
 void mcpwm_foc_deinit(void);
 bool mcpwm_foc_init_done(void);
 void mcpwm_foc_set_configuration(mc_configuration *configuration);
@@ -33,7 +33,7 @@ mc_state mcpwm_foc_get_state(void);
 mc_control_mode mcpwm_foc_control_mode(void);
 bool mcpwm_foc_is_dccal_done(void);
 int mcpwm_foc_isr_motor(void);
-void mcpwm_foc_stop_pwm(bool is_second_motor);
+void mcpwm_foc_stop_pwm(bool is_second_motor); // 停止PWM输出，输入参数表示是否是第二个电机
 void mcpwm_foc_set_duty(float dutyCycle);
 void mcpwm_foc_set_duty_noramp(float dutyCycle);
 void mcpwm_foc_set_pid_speed(float rpm);
@@ -77,7 +77,7 @@ int mcpwm_foc_get_tachometer_abs_value(bool reset);
 float mcpwm_foc_get_phase(void);
 float mcpwm_foc_get_phase_observer(void);
 float mcpwm_foc_get_phase_encoder(void);
-float mcpwm_foc_get_phase_hall(void);
+float mcpwm_foc_get_phase_hall(void); // 获取霍尔传感器测量的相位角度
 float mcpwm_foc_get_vd(void);
 float mcpwm_foc_get_vq(void);
 float mcpwm_foc_get_mod_alpha_raw(void);
@@ -87,10 +87,10 @@ float mcpwm_foc_get_mod_beta_measured(void);
 float mcpwm_foc_get_est_lambda(void);
 float mcpwm_foc_get_est_res(void);
 float mcpwm_foc_get_est_ind(void);
-int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ratio, bool *inverted);
-int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, float *resistance);
-int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld_lq_diff, float *inductance);
-int mcpwm_foc_measure_inductance_current(float curr_goal, int samples, float *curr, float *ld_lq_diff, float *inductance);
+int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ratio, bool *inverted); // 编码器检测函数，输入电流设定值、是否打印结果，以及三个指向浮点数的指针用于存储测量结果：编码器偏移量、编码器比率和编码器反转状态
+int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, float *resistance); // 测量电机的电阻，输入电流设定值、采样数量、是否在测量完成后停止电机，以及一个指向浮点数的指针用于存储测量结果
+int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld_lq_diff, float *inductance); // 测量电机的电感，输入占空比设定值、采样数量，以及三个指向浮点数的指针用于存储测量结果：电流、Ld和Lq的差值，以及电感值
+int mcpwm_foc_measure_inductance_current(float curr_goal, int samples, float *curr, float *ld_lq_diff, float *inductance); // 测量电机的电感，输入电流设定值、采样数量，以及三个指向浮点数的指针用于存储测量结果：电流、Ld和Lq的差值，以及电感值
 
 // Audio
 bool mcpwm_foc_beep(float freq, float time, float voltage);
@@ -100,7 +100,7 @@ bool mcpwm_foc_set_audio_sample_table(int channel, float *samples, int len);
 const float *mcpwm_foc_get_audio_sample_table(int channel);
 bool mcpwm_foc_play_audio_samples(const int8_t *samples, int num_samp, float f_samp, float voltage);
 
-int mcpwm_foc_measure_res_ind(float *res, float *ind, float *ld_lq_diff);
+int mcpwm_foc_measure_res_ind(float *res, float *ind, float *ld_lq_diff); // 测量电机的电阻和电感，输入三个指向浮点数的指针用于存储测量结果：电阻、电感和Ld与Lq的差值
 int mcpwm_foc_hall_detect(float current, uint8_t *hall_table, bool *result);
 int mcpwm_foc_dc_cal(bool cal_undriven);
 void mcpwm_foc_print_state(void);
@@ -129,14 +129,14 @@ void mcpwm_foc_get_currents_adc(
 		float *ph1,
 		float *ph2,
 		bool is_second_motor);
-float mcpwm_foc_get_ts(void);
-bool mcpwm_foc_is_using_encoder(void);
-void mcpwm_foc_get_observer_state(float *x1, float *x2);
+float mcpwm_foc_get_ts(void); // 获取当前的采样时间戳，单位为秒
+bool mcpwm_foc_is_using_encoder(void); // 返回是否正在使用编码器进行位置测量
+void mcpwm_foc_get_observer_state(float *x1, float *x2); // 获取FOC观察器的状态变量，输入两个指向浮点数的指针用于存储状态变量的值
 void mcpwm_foc_set_current_off_delay(float delay_sec);
 
 // Functions where the motor can be selected
 float mcpwm_foc_get_tot_current_motor(bool is_second_motor);
-float mcpwm_foc_get_tot_current_filtered_motor(bool is_second_motor);
+float mcpwm_foc_get_tot_current_filtered_motor(bool is_second_motor); // 获取电机的总电流和滤波后的总电流，输入参数表示是否是第二个电机
 float mcpwm_foc_get_tot_current_in_motor(bool is_second_motor);
 float mcpwm_foc_get_tot_current_in_filtered_motor(bool is_second_motor);
 float mcpwm_foc_get_abs_motor_current_motor(bool is_second_motor);
@@ -144,8 +144,8 @@ float mcpwm_foc_get_abs_motor_current_filtered_motor(bool is_second_motor);
 mc_state mcpwm_foc_get_state_motor(bool is_second_motor);
 
 // Interrupt handlers
-void mcpwm_foc_tim_sample_int_handler(void);
-void mcpwm_foc_adc_int_handler(void *p, uint32_t flags);
+void mcpwm_foc_tim_sample_int_handler(void); // 定时器采样中断处理函数，处理与定时器相关的中断，如更新PWM输出、执行PID控制等
+void mcpwm_foc_adc_int_handler(void *p, uint32_t flags); // ADC中断处理函数，处理与ADC相关的中断，如读取电流传感器的值、更新电流控制等
 
 // Defines
 #define MCPWM_FOC_CURRENT_SAMP_OFFSET				(2) // Offset from timer top for ADC samples
