@@ -4770,11 +4770,11 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 	const float mod_alpha_filter_sgn = (1.0 / 3.0) * (2.0 * SIGN(ia_filter) - SIGN(ib_filter) - SIGN(ic_filter));
 	const float mod_beta_filter_sgn = ONE_BY_SQRT3 * (SIGN(ib_filter) - SIGN(ic_filter));
 
-	const float mod_comp_fact = conf_now->foc_dt_us * 1e-6 * conf_now->foc_f_zv;
+	const float mod_comp_fact = conf_now->foc_dt_us * 1e-6 * conf_now->foc_f_zv; // Tdeadtime/Tpwm = Tdeadtime * fpwm
 	const float mod_alpha_comp = mod_alpha_filter_sgn * mod_comp_fact;
 	const float mod_beta_comp = mod_beta_filter_sgn * mod_comp_fact;
 
-	mod_alpha -= mod_alpha_comp;
+	mod_alpha -= mod_alpha_comp; // 占空比的加减，不是实际电压（也不是电压代表的CCR数）的加减
 	mod_beta -= mod_beta_comp;
 
 	state_m->va = Va;

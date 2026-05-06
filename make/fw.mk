@@ -252,8 +252,17 @@ CPPWARN = -Wall -Wextra -Wundef
 #
 
 # List all user C define here, like -D_DEBUG=1
-UDEFS =
-
+UDEFS = -DHW_SOURCE=\"hwconf/trampa/75_300/hw_75_300_core.c\" \
+        -DHW_HEADER=\"hwconf/trampa/75_300/hw_75_300.h\" \
+        -DARM_GCC_VERSION=\"13.3.1\" \
+        -DGIT_COMMIT_HASH=\"72V_450A_ABI\" \
+        -DGIT_BRANCH_NAME=\"release_6_05\"
+# Remove-Item -Recurse -Force build // 删除build目录下的所有文件和子目录
+# make -f ./make/fw.mk TCHAIN_PREFIX=arm-none-eabi- BUILDDIR=build/emoto PROJECT=emoto -j8
+# 编译时执行以上两段命令，生成的bin文件在build/emoto/emoto.bin
+# 在 .vscode/c_cpp_properties.json中添加了相应的宏定义，VSCode的IntelliSense才能正确解析代码
+# .vscode/c_cpp_properties.json中的宏定义需要和这里的UDEFS保持一致，否则IntelliSense会解析不了代码，显示很多错误
+# .vscode/c_cpp_properties.json不会提交到github上
 # Define ASM defines here
 UADEFS =
 
