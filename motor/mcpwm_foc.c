@@ -188,10 +188,10 @@ static void timer_reinit(int f_zv) {
 	RCC_APB2PeriphClockCmd(RCC_APB2Periph_TIM8, ENABLE);
 
 	TIM_TimeBaseStructure.TIM_Prescaler = 0;
-	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_CenterAligned1;
-	TIM_TimeBaseStructure.TIM_Period = (SYSTEM_CORE_CLOCK / f_zv);
+	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_CenterAligned1; // 中央对齐模式1
+	TIM_TimeBaseStructure.TIM_Period = (SYSTEM_CORE_CLOCK / f_zv); // PMW发波频率是f_zv/2
 	TIM_TimeBaseStructure.TIM_ClockDivision = 0;
-	TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;
+	TIM_TimeBaseStructure.TIM_RepetitionCounter = 0;	// PCR = 0，故TIM1在CNT在0和ARR时都会发生TRGO
 
 	TIM_TimeBaseInit(TIM1, &TIM_TimeBaseStructure);
 	TIM_TimeBaseInit(TIM8, &TIM_TimeBaseStructure);
@@ -290,7 +290,7 @@ static void timer_reinit(int f_zv) {
 	// PWM outputs have to be enabled in order to trigger ADC on CCx
 	TIM_CtrlPWMOutputs(TIM2, ENABLE);
 
-#if defined HW_HAS_DUAL_MOTORS || defined HW_HAS_DUAL_PARALLEL
+#if defined HW_HAS_DUAL_MOTORS || defined HW_HAS_DUAL_PARALLEL // 双电机TIM1 (主) ──TRGO──▶ TIM8 (从) ──TRGO──▶ TIM2 ──CC2──▶ ADC
 	// See: https://www.cnblogs.com/shangdawei/p/4758988.html
 	TIM_SelectOutputTrigger(TIM1, TIM_TRGOSource_Enable);
 	TIM_SelectMasterSlaveMode(TIM1, TIM_MasterSlaveMode_Enable);
@@ -300,7 +300,7 @@ static void timer_reinit(int f_zv) {
 	TIM_SelectOutputTrigger(TIM8, TIM_TRGOSource_Update);
 	TIM_SelectInputTrigger(TIM2, TIM_TS_ITR1);
 	TIM_SelectSlaveMode(TIM2, TIM_SlaveMode_Reset);
-#else
+#else															// TIM1 (主) ──TRGO──▶ TIM2 ──CC2──▶ ADC
 	TIM_SelectOutputTrigger(TIM1, TIM_TRGOSource_Update);
 	TIM_SelectMasterSlaveMode(TIM1, TIM_MasterSlaveMode_Enable);
 	TIM_SelectInputTrigger(TIM2, TIM_TS_ITR0);
@@ -445,7 +445,7 @@ void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2) {
 	ADC_InitStructure.ADC_ScanConvMode = ENABLE;
 	ADC_InitStructure.ADC_ContinuousConvMode = DISABLE;
 	ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_Falling;
-	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_T2_CC2;
+	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_T2_CC2;	// TIM2 CC2（捕获/比较通道2）触发，
 	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
 	ADC_InitStructure.ADC_NbrOfConversion = HW_ADC_NBR_CONV;
 
@@ -620,7 +620,7 @@ void mcpwm_foc_deinit(void) {
 	dmaStreamRelease(STM32_DMA_STREAM(STM32_DMA_STREAM_ID(2, 4)));
 }
 
-static volatile motor_all_state_t *get_motor_now(void) {
+static volatile motor_all_state_t *get_motor_now(void) { // 
 #ifdef HW_HAS_DUAL_MOTORS
 	return mc_interface_motor_now() == 1 ? &m_motor_1 : &m_motor_2;
 #else
@@ -2808,8 +2808,8 @@ void mcpwm_foc_tim_sample_int_handler(void) {
 				m_motor_1.m_motor_state.v_beta);
 	}
 }
-
-void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
+// 一个PWM周期，有两个ADC中断，把TIM1和TIM8的发波配置成相差180°相位，电机1和电机2错开处理
+void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下，使用同一个名字的回调函数
 	(void)p;
 	(void)flags;
 
@@ -2822,16 +2822,16 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 
 	uint32_t t_start = timer_time_now();
 
-	bool is_v7 = !(TIM1->CR1 & TIM_CR1_DIR);
+	bool is_v7 = !(TIM1->CR1 & TIM_CR1_DIR); // 中央对齐模式1下，TIM1HW_ADC_CHANNELS向上计数!(TIM1->CR1 & TIM_CR1_DIR) == 1；向下计数，!(TIM1->CR1 & TIM_CR1_DIR) == 0
 	bool is_second_motor = false;
 	int norm_curr_ofs = 0;
 
 #ifdef HW_HAS_DUAL_MOTORS
-	is_second_motor = is_v7;
+	is_second_motor = is_v7; // TIM1在PWM顶点，处理m_motor_2，否则处理m_motor_1
 	norm_curr_ofs = is_second_motor ? 3 : 0;
 	motor_all_state_t *motor_now = is_second_motor ? (motor_all_state_t*)&m_motor_2 : (motor_all_state_t*)&m_motor_1;
 	motor_all_state_t *motor_other = is_second_motor ? (motor_all_state_t*)&m_motor_1 : (motor_all_state_t*)&m_motor_2;
-	m_isr_motor = is_second_motor ? 2 : 1;
+	m_isr_motor = is_second_motor ? 2 : 1; // 设置全局中断电机标识，供 mc_interface_motor_now()路由使用
 #ifdef HW_HAS_3_SHUNTS
 	volatile TIM_TypeDef *tim = is_second_motor ? TIM8 : TIM1;
 #endif
@@ -2882,14 +2882,14 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 
 	bool do_return = false;
 
-#ifndef HW_HAS_DUAL_MOTORS
-#ifdef HW_HAS_PHASE_SHUNTS
-	if (conf_now->foc_control_sample_mode != FOC_CONTROL_SAMPLE_MODE_V0_V7 && is_v7) {
+#ifndef HW_HAS_DUAL_MOTORS // 仅单电机编译此分支
+#ifdef HW_HAS_PHASE_SHUNTS // 有相分流电阻（三相电流可独立采样）
+	if (conf_now->foc_control_sample_mode != FOC_CONTROL_SAMPLE_MODE_V0_V7 && is_v7) { // 非 V0_V7 模式时，V7时刻直接返回
 		do_return = true;
 	}
-#else
+#else // 无相分流电阻（通常只有下桥臂/母线采样）
 	if (is_v7) {
-		do_return = true;
+		do_return = true; // V7 时刻一律跳过
 	}
 #endif
 #endif
@@ -2897,9 +2897,9 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) {
 #ifdef HW_HAS_PHASE_SHUNTS
 	float dt;
 	if (conf_now->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7) {
-		dt = 1.0 / conf_now->foc_f_zv;
+		dt = 1.0 / conf_now->foc_f_zv; // V0 V7都采样更新，电流环频率是foc_f_zv
 	} else {
-		dt = 1.0 / (conf_now->foc_f_zv / 2.0);
+		dt = 1.0 / (conf_now->foc_f_zv / 2.0); // 仅在一个零矢量采样更新，电流环频率和PWM发波频率一致，是foc_f_zv / 2.0
 	}
 #else
 	float dt = 1.0 / (conf_now->foc_f_zv / 2.0);
