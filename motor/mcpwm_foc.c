@@ -2849,7 +2849,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 	bool skip_interpolation = motor_other->m_cc_was_hfi;
 
-	// Update modulation for V7 and collect current samples. This is used by the HFI.
+	// Update modulation for V7 and collect current samples. This is used by the HFI. 用于HFI
 	if (motor_other->m_duty_next_set) {
 		motor_other->m_duty_next_set = false;
 		skip_interpolation = true;
@@ -2871,7 +2871,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		float curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT2;
 
 		TIMER_UPDATE_DUTY_M1(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
-#ifdef HW_HAS_DUAL_PARALLEL
+#ifdef HW_HAS_DUAL_PARALLEL	// 两套功率板并联驱动同一个电机
 		TIMER_UPDATE_DUTY_M2(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 #endif
 #endif
@@ -2941,7 +2941,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 	if (do_return) {
 		return;
-	}
+	}	// V07不采样时，直接跳过剩余所有FOC的控制计算
 
 	// Reset the watchdog
 	timeout_feed_WDT(THREAD_MCPWM);
