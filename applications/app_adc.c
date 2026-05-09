@@ -188,16 +188,16 @@ static THD_FUNCTION(adc_thread, arg) {
 		}
 
 		// Read the external ADC pin voltage
-		float pwr = ADC_VOLTS(ADC_IND_EXT);
+		float pwr = ADC_VOLTS(ADC_IND_EXT);	// MCU的ADC输入引脚的真实电压值（是MCU管脚处的电压值）
 
 		// Override pwr value, when used from LISP
-		if (adc_detached == 1 || adc_detached == 2) {
-			pwr = adc1_override;
+		if (adc_detached == 1 || adc_detached == 2) { // ADC脱离标志。0=正常硬件读取；1或2=ADC1（油门）被软件接管
+			pwr = adc1_override;	// 软件覆盖值。由 LISP 脚本或其他控制模块直接写入的虚拟油门电压
 		}
 
 		// Read voltage and range check
 		static float read_filter = 0.0;
-		UTILS_LP_MOVING_AVG_APPROX(read_filter, pwr, FILTER_SAMPLES);
+		UTILS_LP_MOVING_AVG_APPROX(read_filter, pwr, FILTER_SAMPLES);	// 用一阶递归滤波器（IIR）近似 N 点滑动平均（FIR）
 
 		if (config.use_filter) {
 			read_voltage = read_filter;
@@ -226,13 +226,13 @@ static THD_FUNCTION(adc_thread, arg) {
 
 		default:
 			// Linear mapping between the start and end voltage
-			pwr = utils_map(pwr, config.voltage_start, config.voltage_end, 0.0, 1.0);
+			pwr = utils_map(pwr, config.voltage_start, config.voltage_end, 0.0, 1.0);	// 把采集的ADC输入引脚的真实电压值映射成0-1.0
 			break;
 		}
 
 		// Optionally apply a filter
 		static float pwr_filter = 0.0;
-		UTILS_LP_MOVING_AVG_APPROX(pwr_filter, pwr, FILTER_SAMPLES);
+		UTILS_LP_MOVING_AVG_APPROX(pwr_filter, pwr, FILTER_SAMPLES);					// 映射成0-1.0后，再进行滤波
 
 		if (config.use_filter) {
 			pwr = pwr_filter;
@@ -316,30 +316,30 @@ static THD_FUNCTION(adc_thread, arg) {
 			}
 		}
 
-		// Override button values, when used from LISP
+		// Override button values, when used from LISP，允许上层软件（如 LISP 脚本）接管物理按钮输入的逻辑，
 		if (buttons_detached) {
-			cc_button = cc_override;
-			rev_button = rev_override;
-			if ((config.buttons >> 1) & 1) {
+			cc_button = cc_override;			// ← CC 按钮用软件给定值
+			rev_button = rev_override;			// ← REV 按钮用软件给定值
+			if ((config.buttons >> 1) & 1) {	// 极性翻转（与硬件读取时逻辑一致）
 				cc_button = !cc_button;
 			}
-			if ((config.buttons >> 2) & 1) {
+			if ((config.buttons >> 2) & 1) {	// 极性翻转（与硬件读取时逻辑一致）
 				rev_button = !rev_button;
 			}
 		}
 
-		if (!((config.buttons >> 0) & 1)) {
-			cc_button = false;
+		if (!((config.buttons >> 0) & 1)) {		// 按钮功能全局使能开关
+			cc_button = false;					// ← 按钮功能禁用时，强制 CC 按钮无效
 		}
 
 		// All pins and buttons are still decoded for debugging, even
 		// when output is disabled.
-		if (app_is_output_disabled()) {
-			continue;
+		if (app_is_output_disabled()) {	// 各种原因（比如故障等）禁止下发给控制
+			continue;					// 跳过下发部分的代码执行
 		}
 
-		if (adc_detached && timeout_has_timeout()) {
-			continue;
+		if (adc_detached && timeout_has_timeout()) {	// ADC/油门已被软件接管（如 LISP 脚本、自动化测试）且通讯timeout
+			continue;									// 跳过下发部分的代码执行
 		}
 
 		switch (config.ctrl_type) {
@@ -350,7 +350,7 @@ static THD_FUNCTION(adc_thread, arg) {
 		case ADC_CTRL_TYPE_PID_REV_CENTER:
 			// Scale the voltage and set 0 at the center
 			pwr *= 2.0;
-			pwr -= 1.0;
+			pwr -= 1.0;									// 映射成 -1.0 到 1.0
 			break;
 
 		case ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_ADC:
@@ -364,7 +364,7 @@ static THD_FUNCTION(adc_thread, arg) {
 		case ADC_CTRL_TYPE_PID_REV_BUTTON:
 			// Invert the voltage if the button is pressed
 			if (rev_button) {
-				pwr = -pwr;
+				pwr = -pwr;		// 倒向被触发时，油门信号的映射值取反
 			}
 			break;
 
@@ -372,10 +372,10 @@ static THD_FUNCTION(adc_thread, arg) {
 			break;
 		}
 
-		// Apply deadband
-		utils_deadband(&pwr, config.hyst, 1.0);
+		// Apply deadband 消抖：死区内（|value| < tres） → 直接强制归零 0.0; 死区外（|value| ≥ tres）
+		utils_deadband(&pwr, config.hyst, 1.0); //  线性缩放，将 [tres, max] 映射到 [0, max]
 
-		// Apply throttle curve
+		// Apply throttle curve，对归一化油门比例 pwr ∈ [-1.0, 1.0] 进行非线性映射，实现"驾驶手感"定制，让油门响应更符合人体工学
 		pwr = utils_throttle_curve(pwr, config.throttle_exp, config.throttle_exp_brake, config.throttle_exp_mode);
 
 		// Apply ramping
@@ -399,7 +399,7 @@ static THD_FUNCTION(adc_thread, arg) {
 
 		// Use the filtered and mapped voltage for control according to the configuration.
 		switch (config.ctrl_type) {
-		case ADC_CTRL_TYPE_CURRENT:
+		case ADC_CTRL_TYPE_CURRENT:				// 电流/转矩模式
 		case ADC_CTRL_TYPE_CURRENT_REV_CENTER:
 		case ADC_CTRL_TYPE_CURRENT_REV_BUTTON:
 			current_mode = true;
@@ -598,7 +598,7 @@ static THD_FUNCTION(adc_thread, arg) {
 				}
 
 				// Traction control
-				if (config.multi_esc) {
+				if (config.multi_esc) { 	// 处理多电调场景，通过CAN协调各电调给定
 					for (int i = 0;i < CAN_STATUS_MSGS_TO_STORE;i++) {
 						can_status_msg *msg = comm_can_get_status_msg_index(i);
 
@@ -634,7 +634,7 @@ static THD_FUNCTION(adc_thread, arg) {
 				if (is_reverse) {
 					mc_interface_set_current_rel(-current_out);
 				} else {
-					mc_interface_set_current_rel(current_out);
+					mc_interface_set_current_rel(current_out);	// 转把信号下发至底层设备
 				}
 			}
 		}

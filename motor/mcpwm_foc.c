@@ -2824,7 +2824,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 	bool is_v7 = !(TIM1->CR1 & TIM_CR1_DIR); // 中央对齐模式1下，TIM1HW_ADC_CHANNELS向上计数!(TIM1->CR1 & TIM_CR1_DIR) == 1；向下计数，!(TIM1->CR1 & TIM_CR1_DIR) == 0
 	bool is_second_motor = false;
-	int norm_curr_ofs = 0;
+	int norm_curr_ofs = 0;	// 用于增加存放电流数据的数组的下标，存放第二个电机的采样电流
 
 #ifdef HW_HAS_DUAL_MOTORS
 	is_second_motor = is_v7; // TIM1在PWM顶点，处理m_motor_2，否则处理m_motor_1
@@ -2875,8 +2875,8 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		TIMER_UPDATE_DUTY_M2(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 #endif
 #endif
-
-		motor_other->m_i_alpha_sample_next = curr0;
+		// 插值，用于后续做平均使用
+		motor_other->m_i_alpha_sample_next = curr0;										
 		motor_other->m_i_beta_sample_next = ONE_BY_SQRT3 * curr0 + TWO_BY_SQRT3 * curr1;
 	}
 
@@ -3004,14 +3004,14 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		curr2 *= FAC_CURRENT3;
 	}
 	
-#ifndef HW_HAS_3_SHUNTS	
+#ifndef HW_HAS_3_SHUNTS		// 仅有两个电流传感器的操作
 	// Calculate third current assuming they are balanced
 	curr2 = -(curr0 + curr1);
 #endif
 
 	// Use the best current samples depending on the modulation state.
 #ifdef HW_HAS_3_SHUNTS
-	if (conf_now->foc_current_sample_mode == FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT) {
+	if (conf_now->foc_current_sample_mode == FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT) { // 电流超过量程时，可以用最小的两个量程电流传感器的数据
 		// High current sampling mode. Choose the lower currents to derive the highest one
 		// in order to be able to measure higher currents.
 		const float i0_abs = fabsf(curr0);
@@ -3025,7 +3025,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		} else if (i2_abs > i0_abs && i2_abs > i1_abs) {
 			curr2 = -(curr0 + curr1);
 		}
-	} else if (conf_now->foc_current_sample_mode == FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO) {
+	} else if (conf_now->foc_current_sample_mode == FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO) { // 去掉最靠近零矢量的采样数据，系统默认配置
 #ifdef HW_HAS_PHASE_SHUNTS
 		if (is_v7) {
 			if (tim->CCR1 > 500 && tim->CCR2 > 500) {
@@ -3088,7 +3088,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 	// TODO: Test this.
 	dt *= (float)FOC_CONTROL_LOOP_FREQ_DIVIDER;
 
-	UTILS_LP_FAST(motor_now->m_motor_state.v_bus, GET_INPUT_VOLTAGE(), 0.1);
+	UTILS_LP_FAST(motor_now->m_motor_state.v_bus, GET_INPUT_VOLTAGE(), 0.1); // 母线电压滤波
 
 	volatile float enc_ang = 0;
 	volatile bool encoder_is_being_used = false;
@@ -3558,7 +3558,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		/* voltage_normalize = 1/(2/3*V_bus) */
 		const float voltage_normalize = 1.5 / motor_now->m_motor_state.v_bus;
 
-		motor_now->m_motor_state.mod_d = motor_now->m_motor_state.vd * voltage_normalize;
+		motor_now->m_motor_state.mod_d = motor_now->m_motor_state.vd * voltage_normalize; // 将PI输出的绝对电压值V，转换为无量纲调制指数,理论范围 [-1, 1]
 		motor_now->m_motor_state.mod_q = motor_now->m_motor_state.vq * voltage_normalize;
 		UTILS_NAN_ZERO(motor_now->m_motor_state.mod_q_filter);
 		UTILS_LP_FAST(motor_now->m_motor_state.mod_q_filter, motor_now->m_motor_state.mod_q, 0.2);
@@ -3567,7 +3567,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 	// Calculate duty cycle
 	motor_now->m_motor_state.duty_now = SIGN(motor_now->m_motor_state.vq) *
-			NORM2_f(motor_now->m_motor_state.mod_d, motor_now->m_motor_state.mod_q) * TWO_BY_SQRT3;
+			NORM2_f(motor_now->m_motor_state.mod_d, motor_now->m_motor_state.mod_q) * TWO_BY_SQRT3; // 调制系数，线性区理论最大[-1, 1]，过调制II区[-1.1547, 1.1547]
 
 	float phase_for_speed_est = 0.0;
 	switch (conf_now->foc_speed_soure) {

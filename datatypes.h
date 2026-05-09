@@ -167,28 +167,33 @@ typedef enum {
 } mc_fault_code;
 
 typedef enum {
-	CONTROL_MODE_DUTY = 0,
-	CONTROL_MODE_SPEED,
-	CONTROL_MODE_CURRENT,
-	CONTROL_MODE_CURRENT_BRAKE,
-	CONTROL_MODE_POS,
-	CONTROL_MODE_HANDBRAKE,
-	CONTROL_MODE_OPENLOOP,
-	CONTROL_MODE_OPENLOOP_PHASE,
-	CONTROL_MODE_OPENLOOP_DUTY,
-	CONTROL_MODE_OPENLOOP_DUTY_PHASE,
-	CONTROL_MODE_NONE
+	CONTROL_MODE_DUTY = 0,			// 占空比控制模式
+	CONTROL_MODE_SPEED,				// 速度环控制
+	CONTROL_MODE_CURRENT,			// 电流转矩模式
+	CONTROL_MODE_CURRENT_BRAKE,		// 再生自动模式/能量回收模式
+	CONTROL_MODE_POS,				// 位置模式
+	CONTROL_MODE_HANDBRAKE,			// 手刹/主动锁死模式，强制在电机的D轴注入直流电流，不产生旋转磁场，而是产生一个死死吸住转子的电磁抱死力
+	CONTROL_MODE_OPENLOOP,			// 开环模式
+	CONTROL_MODE_OPENLOOP_PHASE, 	// 定相定流模式
+	CONTROL_MODE_OPENLOOP_DUTY,	 	// 旋转定压模式,抛弃了 PI 电流环，直接向电机输出恒定的占空比,磁场以设定的角速度（ERPM）匀速旋转，典型应用：测定反电动势和磁链
+	CONTROL_MODE_OPENLOOP_DUTY_PHASE,	// 定相定压模式，电机不动，内部只有两个或三个线圈通着一个恒定的 PWM 电压。典型应用：底层硬件研发与除错
+	CONTROL_MODE_NONE					// 空闲，不发波
 } mc_control_mode;
+//						控制旋转角度 (Angle)	控制幅值能量 (Amplitude)	物理表现			典型应用
+//OPENLOOP_DUTY_PHASE	死死固定 (Phase)		纯电压占空比 (Duty)			定子通电不转		硬件死区、波形除错
+//OPENLOOP_PHASE		死死固定 (Phase)		闭环电流 PI (Current)		恒定力矩抱死		编码器零点校准
+//OPENLOOP_DUTY			匀速旋转 (Speed)		纯电压占空比 (Duty)			给定电压瞎转		测反电动势、算磁链
+//CONTROL_MODE_OPENLOOP	匀速旋转 (Speed)		闭环电流 PI (Current)		恒流强拖匀速旋转	低速启动、开环试机
 
 typedef enum {
-	DISP_POS_MODE_NONE = 0,
-	DISP_POS_MODE_INDUCTANCE,
-	DISP_POS_MODE_OBSERVER,
-	DISP_POS_MODE_ENCODER,
-	DISP_POS_MODE_PID_POS,
-	DISP_POS_MODE_PID_POS_ERROR,
-	DISP_POS_MODE_ENCODER_OBSERVER_ERROR,
-	DISP_POS_MODE_HALL_OBSERVER_ERROR
+	DISP_POS_MODE_NONE = 0,		// 不上传角度数据，节省带宽
+	DISP_POS_MODE_INDUCTANCE,	// 上传由 HFI（高频注入）测算出来的电感凸极角度
+	DISP_POS_MODE_OBSERVER,		// 上传由 BEMF（反电动势）无感观测器估算出来的角度
+	DISP_POS_MODE_ENCODER,		// 上传物理编码器（或霍尔插值）传回来的绝对真实角度
+	DISP_POS_MODE_PID_POS,		// 上传位置控制模式下，用户设定的“目标角度”
+	DISP_POS_MODE_PID_POS_ERROR,// 目标角度与实际角度的偏差（常用来调参看超调量）
+	DISP_POS_MODE_ENCODER_OBSERVER_ERROR,// 把物理编码器的真实角度，减去无感观测器猜的角度，画出来的误差曲线。用于精准调节无感观测器的 Observer Gain，如果这条线趋近于 0，说明无感算法调到了完美境界
+	DISP_POS_MODE_HALL_OBSERVER_ERROR	// 同上，用来调校霍尔传感器与无感观测器的误差
 } disp_pos_mode;
 
 typedef enum {
@@ -630,30 +635,33 @@ typedef struct {
 
 // ADC control types
 typedef enum {
-	ADC_CTRL_TYPE_NONE = 0,
-	ADC_CTRL_TYPE_CURRENT,
-	ADC_CTRL_TYPE_CURRENT_REV_CENTER,
-	ADC_CTRL_TYPE_CURRENT_REV_BUTTON,
-	ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_ADC,
-	ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_CENTER,
-	ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_CENTER,
-	ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_BUTTON,
-	ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_ADC,
+	ADC_CTRL_TYPE_NONE = 0,							// 关闭 ADC 应用，油门完全失效
+	ADC_CTRL_TYPE_CURRENT,							// 最纯粹的单向扭矩控制。拧油门给正向电流（推背感），松油门滑行。没有刹车，没有倒车。
+	ADC_CTRL_TYPE_CURRENT_REV_CENTER,				// 中立点倒车模式。类似于电动滑板的遥控器。摇杆在最中间（50%）是 0A（滑行）；往前推（>50%）是正向加速；往后拉（<50%）先是刹车，刹停后继续拉就是倒车
+	ADC_CTRL_TYPE_CURRENT_REV_BUTTON,				// 按键倒车模式。油门把手只管 0~100% 的加速，外接一个物理按键（接在单片机 GPIO 上），按下按键，油门就变成了倒车油门
+	ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_ADC,		// ADC1（右手）= 纯油门；ADC2（左手或脚踏）= 纯线性刹车；物理按键 = 切换前进/倒车档位
+	ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_CENTER,	// 油门中立点模式（推加速、拉刹车），同时额外加一个按键用来切换前后方向
+	ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_CENTER,		// 油门中立点模式（推加速、拉刹车），但禁止倒车（NOREV）。拉到底只能刹停，绝对不会往后退
+	ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_BUTTON,		// 右手油门只管加速，按下额外的刹车微动开关，系统输出最大设定的电磁刹车力（非线性刹车）。禁止倒车
+	ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_ADC,			// 最标准的现代电动滑板车配置！ 右手霍尔转把（ADC1）控制加速，左手霍尔拨片（ADC2）控制线性电磁刹车。禁止倒车
+	// 分为单向、中立点倒车、按键倒车。与 Current 模式的区别是：油门控制的是固定的输出电压比例，而不是电流（扭矩）。类似于燃油车固定节气门，上坡时转速会掉，下坡时转速会飙升。体验较差，现在很少用
 	ADC_CTRL_TYPE_DUTY,
 	ADC_CTRL_TYPE_DUTY_REV_CENTER,
 	ADC_CTRL_TYPE_DUTY_REV_BUTTON,
+	// 分为单向、中立点倒车、按键倒车。油门控制的是目标转速（ERPM）。你拧到一半，系统就死死咬住比如 3000转。上坡时系统会自动猛加电流，下坡时自动刹车发电，保证速度绝对不变。常用于传送带、割草机、需要定速行驶的农用设备
 	ADC_CTRL_TYPE_PID,
 	ADC_CTRL_TYPE_PID_REV_CENTER,
 	ADC_CTRL_TYPE_PID_REV_BUTTON
-} adc_control_type;
+} adc_control_type;	// 油门/刹车交互逻辑
 
 // PAS control types
 typedef enum {
-	PAS_CTRL_TYPE_NONE = 0,
-	PAS_CTRL_TYPE_CADENCE,
-	PAS_CTRL_TYPE_TORQUE,
-	PAS_CTRL_TYPE_TORQUE_WITH_CADENCE_TIMEOUT
-} pas_control_type;
+	PAS_CTRL_TYPE_NONE = 0,						// 关闭电助力
+	PAS_CTRL_TYPE_CADENCE,						// 踏频辅助模式 / 速度传感器
+	PAS_CTRL_TYPE_TORQUE,						// 力矩辅助模式 / 扭矩传感器
+	// 安全机制：这个模式结合了踏频。只要踏板停止旋转超过设定的超时时间（Timeout），无论你的脚踩得有多重，电机都强制切断动力！只有当踏板真正转动起来时，才恢复力矩辅助
+	PAS_CTRL_TYPE_TORQUE_WITH_CADENCE_TIMEOUT	// 力矩+踏频超时安全模式
+} pas_control_type; // E-Bike（电助力自行车）的骑行体验
 
 // PAS sensor types
 typedef enum {
