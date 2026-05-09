@@ -375,18 +375,18 @@ static THD_FUNCTION(adc_thread, arg) {
 		// Apply deadband 消抖：死区内（|value| < tres） → 直接强制归零 0.0; 死区外（|value| ≥ tres）
 		utils_deadband(&pwr, config.hyst, 1.0); //  线性缩放，将 [tres, max] 映射到 [0, max]
 
-		// Apply throttle curve，对归一化油门比例 pwr ∈ [-1.0, 1.0] 进行非线性映射，实现"驾驶手感"定制，让油门响应更符合人体工学
+		// Apply throttle curve，对归一化油门比例进行非线性映射，实现"驾驶手感"定制，让油门响应更符合人体工学
 		pwr = utils_throttle_curve(pwr, config.throttle_exp, config.throttle_exp_brake, config.throttle_exp_mode);
 
 		// Apply ramping
 		static systime_t last_time = 0;
 		static float pwr_ramp = 0.0;
-		float ramp_time = fabsf(pwr) > fabsf(pwr_ramp) ? config.ramp_time_pos : config.ramp_time_neg;
+		float ramp_time = fabsf(pwr) > fabsf(pwr_ramp) ? config.ramp_time_pos : config.ramp_time_neg; // 拧油门与松油门的目标时间
 
 		if (ramp_time > 0.01) {
-			const float ramp_step = (float)ST2MS(chVTTimeElapsedSinceX(last_time)) / (ramp_time * 1000.0);
+			const float ramp_step = (float)ST2MS(chVTTimeElapsedSinceX(last_time)) / (ramp_time * 1000.0); // 达到目标时间的每次执行的步进值
 			utils_step_towards(&pwr_ramp, pwr, ramp_step);
-			last_time = chVTGetSystemTimeX();
+			last_time = chVTGetSystemTimeX();	// 与chVTTimeElapsedSinceX配合获取两次循环迭代之间时间间隔
 			pwr = pwr_ramp;
 		}
 
@@ -394,7 +394,7 @@ static THD_FUNCTION(adc_thread, arg) {
 		bool current_mode = false;
 		bool current_mode_brake = false;
 		const volatile mc_configuration *mcconf = mc_interface_get_configuration();
-		const float rpm_now = mc_interface_get_rpm();
+		const float rpm_now = mc_interface_get_rpm();				// 获取PLL的速度
 		bool send_duty = false;
 
 		// Use the filtered and mapped voltage for control according to the configuration.
@@ -406,7 +406,7 @@ static THD_FUNCTION(adc_thread, arg) {
 			current_rel = pwr;
 
 			if (fabsf(pwr) < 0.001) {
-				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;
+				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;  // 上电未归零计数器
 			}
 			break;
 
