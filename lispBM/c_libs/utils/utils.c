@@ -422,13 +422,13 @@ float utils_throttle_curve(float val, float curve_acc, float curve_brake, int mo
 
 	// See
 	// http://math.stackexchange.com/questions/297768/how-would-i-create-a-exponential-ramp-function-from-0-0-to-1-1-with-a-single-val
-	if (mode == 0) { // Exponential
+	if (mode == 0) { // Exponential 纯幂函数指数
 		if (curve >= 0.0) {
 			ret = 1.0 - powf(1.0 - val_a, 1.0 + curve);
 		} else {
 			ret = powf(val_a, 1.0 - curve);
 		}
-	} else if (mode == 1) { // Natural
+	} else if (mode == 1) { // Natural 自然对数 e 的指数
 		if (fabsf(curve) < 1e-10) {
 			ret = val_a;
 		} else {
@@ -438,7 +438,7 @@ float utils_throttle_curve(float val, float curve_acc, float curve_brake, int mo
 				ret = (expf(-curve * val_a) - 1.0) / (expf(-curve) - 1.0);
 			}
 		}
-	} else if (mode == 2) { // Polynomial
+	} else if (mode == 2) { // Polynomial 多项式 / 有理分式
 		if (curve >= 0.0) {
 			ret = 1.0 - ((1.0 - val_a) / (1.0 + curve * val_a));
 		} else {

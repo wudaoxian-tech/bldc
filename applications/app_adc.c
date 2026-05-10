@@ -376,7 +376,7 @@ static THD_FUNCTION(adc_thread, arg) {
 		utils_deadband(&pwr, config.hyst, 1.0); //  线性缩放，将 [tres, max] 映射到 [0, max]
 
 		// Apply throttle curve，对归一化油门比例进行非线性映射，实现"驾驶手感"定制，让油门响应更符合人体工学
-		pwr = utils_throttle_curve(pwr, config.throttle_exp, config.throttle_exp_brake, config.throttle_exp_mode);
+		pwr = utils_throttle_curve(pwr, config.throttle_exp, config.throttle_exp_brake, config.throttle_exp_mode); 
 
 		// Apply ramping
 		static systime_t last_time = 0;
