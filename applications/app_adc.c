@@ -406,7 +406,7 @@ static THD_FUNCTION(adc_thread, arg) {
 			current_rel = pwr;
 
 			if (fabsf(pwr) < 0.001) {
-				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;  // 上电未归零计数器
+				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;  // 归零计数器
 			}
 			break;
 
@@ -416,10 +416,10 @@ static THD_FUNCTION(adc_thread, arg) {
 		case ADC_CTRL_TYPE_CURRENT_NOREV_BRAKE_ADC:
 		case ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_ADC:
 			current_mode = true;
-			if (pwr >= 0.0) {
+			if (pwr >= 0.0) {	// 加速
 				// if pedal assist (PAS) thread is running, use the highest current command
 				if (app_pas_is_running()) {
-					pwr = utils_max_abs(pwr, app_pas_get_current_target_rel());
+					pwr = utils_max_abs(pwr, app_pas_get_current_target_rel()); // 如果脚踩的助力电流 > 手拧的油门电流，听脚的；如果手拧得更猛，听手的！
 				}
 				current_rel = pwr;
 			} else {
