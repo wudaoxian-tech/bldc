@@ -720,13 +720,13 @@ void mc_interface_set_current_rel(float val) {
 	volatile mc_configuration *cfg = &motor_now()->m_conf;
 	float duty = mc_interface_get_duty_cycle_now();
 
-	if (fabsf(duty) < 0.02 || SIGN(val) == SIGN(duty)) {
+	if (fabsf(duty) < 0.02 || SIGN(val) == SIGN(duty)) { // 静止或极低速时，duty 会在0%附近因为噪声微小浮动（比如在+0.001和−0.001之间横跳
 		mc_interface_set_current(val * cfg->lo_current_max);
 	} else {
 		mc_interface_set_current(val * fabsf(cfg->lo_current_min));
 	}
 
-	if (fabsf(val * cfg->l_abs_current_max) > cfg->cc_min_current) {
+	if (fabsf(val * cfg->l_abs_current_max) > cfg->cc_min_current) { //  cc_min_current最小闭环电流
 		mc_interface_set_current_off_delay(0.1);
 	}
 }
@@ -1745,7 +1745,7 @@ bool mc_interface_wait_for_motor_release_both(float timeout) {
 }
 
 void mc_interface_set_current_off_delay(float delay_sec) {
-	if (mc_interface_try_input()) {
+	if (mc_interface_try_input()) { // 检查当前电机的状态是否允许被控制。如果允许，返回 0；如果不允许，返回 非0 拦截
 		return;
 	}
 
@@ -1785,12 +1785,12 @@ void mc_interface_override_temp_motor(float temp) {
  */
 int mc_interface_try_input(void) {
 	// TODO: Remove this later
-	if (mc_interface_get_state() == MC_STATE_DETECTING) {
+	if (mc_interface_get_state() == MC_STATE_DETECTING) { // 正在自学习时，如果拧下油门会把自学习流程打断，关波
 		mcpwm_stop_pwm();
 		motor_now()->m_ignore_iterations = MCPWM_DETECT_STOP_TIME;
 	}
 
-	int retval = motor_now()->m_ignore_iterations;
+	int retval = motor_now()->m_ignore_iterations;	// 只要非0，所有的外部油门命令会被屏蔽
 
 	if (!motor_now()->m_ignore_iterations && motor_now()->m_lock_enabled) {
 		if (!motor_now()->m_lock_override_once) {
