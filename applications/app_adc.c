@@ -423,12 +423,12 @@ static THD_FUNCTION(adc_thread, arg) {
 				}
 				current_rel = pwr;
 			} else {
-				current_rel = fabsf(pwr);
-				current_mode_brake = true;
+				current_rel = fabsf(pwr);	// 把负的油门值变成正的刹车力度
+				current_mode_brake = true;	// 激活刹车标志位
 			}
 
 			if (pwr < 0.001) {
-				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;
+				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;// 同样累加“油门归零”安全计时器
 			}
 
 			if ((config.ctrl_type == ADC_CTRL_TYPE_CURRENT_REV_BUTTON_BRAKE_ADC ||
@@ -441,11 +441,11 @@ static THD_FUNCTION(adc_thread, arg) {
 		case ADC_CTRL_TYPE_DUTY_REV_CENTER:
 		case ADC_CTRL_TYPE_DUTY_REV_BUTTON:
 			if (fabsf(pwr) < 0.001) {
-				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;
+				ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;// 同样累加“油门归零”安全计时器
 			}
 
-			if (!(ms_without_power < MIN_MS_WITHOUT_POWER && config.safe_start)) {
-				mc_interface_set_duty(utils_map(pwr, -1.0, 1.0, -mcconf->l_max_duty, mcconf->l_max_duty));
+			if (!(ms_without_power < MIN_MS_WITHOUT_POWER && config.safe_start)) {	// 通过了安全检查 (safe_start)
+				mc_interface_set_duty(utils_map(pwr, -1.0, 1.0, -mcconf->l_max_duty, mcconf->l_max_duty));// 把 -1.0 到 1.0 的百分比，映射到底层允许的最大正负占空比限制上
 				send_duty = true;
 			}
 			break;
@@ -453,7 +453,7 @@ static THD_FUNCTION(adc_thread, arg) {
 		case ADC_CTRL_TYPE_PID:
 		case ADC_CTRL_TYPE_PID_REV_CENTER:
 		case ADC_CTRL_TYPE_PID_REV_BUTTON:
-			if ((pwr >= 0.0 && rpm_now > 0.0) || (pwr < 0.0 && rpm_now < 0.0)) {
+			if ((pwr >= 0.0 && rpm_now > 0.0) || (pwr < 0.0 && rpm_now < 0.0)) { //  条件一样，应该是代码的历史遗留
 				current_rel = pwr;
 			} else {
 				current_rel = pwr;
@@ -462,7 +462,7 @@ static THD_FUNCTION(adc_thread, arg) {
 			if (!(ms_without_power < MIN_MS_WITHOUT_POWER && config.safe_start)) {
 				float speed = 0.0;
 				if (pwr >= 0.0) {
-					speed = pwr * mcconf->l_max_erpm;
+					speed = pwr * mcconf->l_max_erpm;	// 把百分比 pwr 映射为正向或反向的最大转速限制 (ERPM)
 				} else {
 					speed = pwr * fabsf(mcconf->l_min_erpm);
 				}
@@ -481,15 +481,15 @@ static THD_FUNCTION(adc_thread, arg) {
 		}
 
 		// If safe start is enabled and the output has not been zero for long enough
-		if ((ms_without_power < MIN_MS_WITHOUT_POWER && config.safe_start) || !range_ok) {
+		if ((ms_without_power < MIN_MS_WITHOUT_POWER && config.safe_start) || !range_ok) { // 上电或故障恢复后，需要松开油门超过一定时间
 			static int pulses_without_power_before = 0;
 			if (ms_without_power == pulses_without_power_before) {
 				ms_without_power = 0;
 			}
 			pulses_without_power_before = ms_without_power;
-			mc_interface_set_brake_current(timeout_get_brake_current());
+			mc_interface_set_brake_current(timeout_get_brake_current());	// 强行把底层的电流指令设定为“刹车待机状态”
 
-			if (config.multi_esc) {
+			if (config.multi_esc) {	// 并且通过 CAN 总线，通知其他轮子的电调也进入刹车待机状态
 				for (int i = 0;i < CAN_STATUS_MSGS_TO_STORE;i++) {
 					can_status_msg *msg = comm_can_get_status_msg_index(i);
 
@@ -503,7 +503,7 @@ static THD_FUNCTION(adc_thread, arg) {
 		}
 
 		// Reset timeout only when the ADC-app is not detached
-		if (!adc_detached) {
+		if (!adc_detached) {	// 只有在物理油门掌控时，才喂狗
 			timeout_reset();
 		}
 
@@ -514,18 +514,18 @@ static THD_FUNCTION(adc_thread, arg) {
 		static float rpm_filtered = 0.0;
 		UTILS_LP_MOVING_AVG_APPROX(rpm_filtered, mc_interface_get_rpm(), RPM_FILTER_SAMPLES);
 
-		if (current_mode && cc_button && fabsf(pwr) < 0.001) {
+		if (current_mode && cc_button && fabsf(pwr) < 0.001) { // 触发条件：处于电流模式 && 按下了巡航物理按键 (cc_button) && 油门已完全松开
 			static float pid_rpm = 0.0;
-
+			// 状态机锁存：只有在刚按下按键的第一瞬间，才抓取当前车速！
 			if (!was_pid) {
 				was_pid = true;
-				pid_rpm = rpm_filtered;
+				pid_rpm = rpm_filtered;	// 把当前车速锁定为巡航目标速度
 			}
 
-			mc_interface_set_pid_speed(pid_rpm);
+			mc_interface_set_pid_speed(pid_rpm); // 开启底层的 PID 速度闭环，死死咬住这个目标速度
 
 			// Send the same duty cycle to the other controllers
-			if (config.multi_esc) {
+			if (config.multi_esc) { // 多电机协调
 				float current = mc_interface_get_tot_current_directional_filtered();
 
 				for (int i = 0;i < CAN_STATUS_MSGS_TO_STORE;i++) {
