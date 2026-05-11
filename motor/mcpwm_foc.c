@@ -3141,22 +3141,22 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		const float vq_now = motor_now->m_motor_state.vq;
 		const float speed_fast_now = motor_now->m_pll_speed;
 
-		float id_set_tmp = motor_now->m_id_set;
-		float iq_set_tmp = motor_now->m_iq_set;
+		float id_set_tmp = motor_now->m_id_set;	// id设定参考值
+		float iq_set_tmp = motor_now->m_iq_set;	// iq设定参考值
 		motor_now->m_motor_state.max_duty = conf_now->l_max_duty;
 
 		if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {
-			utils_truncate_number_abs(&iq_set_tmp, -conf_now->lo_current_min);
+			utils_truncate_number_abs(&iq_set_tmp, -conf_now->lo_current_min);	
 		}
 
-		UTILS_LP_FAST(motor_now->m_duty_abs_filtered, duty_abs, 0.01);
-		utils_truncate_number_abs((float*)&motor_now->m_duty_abs_filtered, 1.0);
+		UTILS_LP_FAST(motor_now->m_duty_abs_filtered, duty_abs, 0.01);				// 占空比绝对值滤波
+		utils_truncate_number_abs((float*)&motor_now->m_duty_abs_filtered, 1.0);	// 占空比绝对值限幅
 
-		UTILS_LP_FAST(motor_now->m_duty_filtered, duty_now, 0.01);
-		utils_truncate_number_abs((float*)&motor_now->m_duty_filtered, 1.0);
+		UTILS_LP_FAST(motor_now->m_duty_filtered, duty_now, 0.01);					// 占空比滤波
+		utils_truncate_number_abs((float*)&motor_now->m_duty_filtered, 1.0);		// 占空比限幅
 
-		float duty_set = motor_now->m_duty_cycle_set; 	// 上层给定的目标占空比
-		bool control_duty = motor_now->m_control_mode == CONTROL_MODE_DUTY ||	// 标志位，标记当前是否处于占空比控制类模式
+		float duty_set = motor_now->m_duty_cycle_set; 								// 上层给定的目标占空比
+		bool control_duty = motor_now->m_control_mode == CONTROL_MODE_DUTY ||		// 标志位，标记当前是否处于占空比控制类模式
 				motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY ||
 				motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY_PHASE;
 
@@ -3166,14 +3166,14 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		// mode. Stay in duty=0 for at least 10 cycles to avoid jumping in and out of that mode rapidly
 		// around the threshold.
 		if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {
-			if ((SIGN(speed_fast_now) != SIGN(motor_now->m_br_speed_before) ||	// 机械转速过零
-					SIGN(vq_now) != SIGN(motor_now->m_br_vq_before) ||			// 电气转矩方向过零
-					fabsf(motor_now->m_duty_filtered) < 0.001 || motor_now->m_br_no_duty_samples < 10) &&
-					motor_now->m_motor_state.i_abs_filter < fabsf(iq_set_tmp)) {	 // 实际电流仍小于目标刹车电流
-				control_duty = true;
-				duty_set = 0.0;
+			if ((SIGN(speed_fast_now) != SIGN(motor_now->m_br_speed_before) ||	// 机械转速过零(发生反转倾向)
+					SIGN(vq_now) != SIGN(motor_now->m_br_vq_before) ||			// 电压方向过零
+					fabsf(motor_now->m_duty_filtered) < 0.001 || motor_now->m_br_no_duty_samples < 10) &&	// 占空比已经降到0或滞后防抖
+					motor_now->m_motor_state.i_abs_filter < fabsf(iq_set_tmp)) {	 // 电流还没达到最大刹车力度
+				control_duty = true;		// 劫持控制权，强制用占空比
+				duty_set = 0.0;				// 强制占空比归零，三相短路刹车，6个MOS管就会变成“下管全开，上管全关”，完美实现三相短路
 				motor_now->m_br_no_duty_samples = 0;
-			} else if (motor_now->m_br_no_duty_samples < 10) {
+			} else if (motor_now->m_br_no_duty_samples < 10) { // 继续保持短路状态至少10个周期，防止在零速附近“短路”和“主动刹车”之间疯狂横跳（防抖）
 				control_duty = true;
 				duty_set = 0.0;
 				motor_now->m_br_no_duty_samples++;
@@ -3187,35 +3187,35 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 		// Brake when set ERPM is below min ERPM
 		if (motor_now->m_control_mode == CONTROL_MODE_SPEED &&
-				fabsf(motor_now->m_speed_pid_set_rpm) < conf_now->s_pid_min_erpm) {	// 目标转速低于 s_pid_min_erpm（最小稳定转速），强制占空比归零
+				fabsf(motor_now->m_speed_pid_set_rpm) < conf_now->s_pid_min_erpm) {	// 目标转速低于最小稳定转速，强制占空比归零；代码再次劫持控制权，直接 Duty = 0 短路刹停，既安静又安全
 			control_duty = true;
 			duty_set = 0.0;
 		}
 
 		// Reset integrator when leaving duty cycle mode, as the windup protection is not too fast. Making
 		// better windup protection is probably better, but not easy.
-		if (!control_duty && motor_now->m_was_control_duty) {	// 从占空比模式切换回电流模式
-			motor_now->m_motor_state.vq_int = motor_now->m_motor_state.vq;	// Q 轴 PI 积分器 vq_int 初始化为当前实际输出电压 vq
+		if (!control_duty && motor_now->m_was_control_duty) {				// 从占空比模式切换回电流模式
+			motor_now->m_motor_state.vq_int = motor_now->m_motor_state.vq;	// Q轴PI积分器vq_int初始化为当前实际输出电压vq
 			if (conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_BEMF ||
 					conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_CROSS_BEMF) {
-				motor_now->m_motor_state.vq_int -= motor_now->m_pll_speed * conf_now->foc_motor_flux_linkage;
+				motor_now->m_motor_state.vq_int -= motor_now->m_pll_speed * conf_now->foc_motor_flux_linkage; // 如果解耦，积分器再减去耦合项
 			}
 		}
-		motor_now->m_was_control_duty = control_duty;
+		motor_now->m_was_control_duty = control_duty;						// 把此轮的标志位保存，用于后续轮的比较
 
 		float current_max_for_duty = conf_now->lo_current_max;	
-		if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {	// 占空比控制的电流限幅基准
+		if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {		// 占空比控制的电流限幅基准
 			current_max_for_duty = fabsf(conf_now->lo_current_min);
 		}
 		// 在电流模式下，持续用当前实际 Q 轴电流归一化值更新 m_duty_i_term。确保未来切入占空比模式时，PI 积分器从合理初值开始，避免从零累积导致响应延迟
-		if (!control_duty) {
-			motor_now->m_duty_i_term = motor_now->m_motor_state.iq / current_max_for_duty;
+		if (!control_duty) { // 不处于占空比控制模式，系统用当前的真实电流比例，实时更新占空比模式的内部积分器m_duty_i_term
+			motor_now->m_duty_i_term = motor_now->m_motor_state.iq / current_max_for_duty;	// 这个代表实际的占空比？
 			motor_now->duty_was_pi = false;
 		}
 
 		if (control_duty) {
 			// Duty cycle control, 占空比下降/维持阶段，启用 PI 闭环
-			if (fabsf(duty_set) < (duty_abs - 0.01) &&
+			if (fabsf(duty_set) < (duty_abs - 0.01) &&		// 目标占空比小于当前实际占空比；“-0.01”相当于滞回带（Hysteresis Band）
 					(!motor_now->duty_was_pi || SIGN(motor_now->duty_pi_duty_last) == SIGN(duty_now))) {
 				// Truncating the duty cycle here would be dangerous, so run a PI controller.
 
@@ -3240,7 +3240,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 				float error = duty_set - motor_now->m_motor_state.duty_now;
 
 				// Compute parameters
-				float scale = 1.0 / motor_now->m_motor_state.v_bus;
+				float scale = 1.0 / motor_now->m_motor_state.v_bus;		// Kp'=Kp/Vbus；Ki'= Ki/Vbus；无论电池电压多少，占空比响应曲线保持高度一致
 				float p_term = error * conf_now->foc_duty_dowmramp_kp * scale;
 				motor_now->m_duty_i_term += error * (conf_now->foc_duty_dowmramp_ki * dt) * scale;
 
@@ -3251,7 +3251,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 				float output = p_term + motor_now->m_duty_i_term;
 				utils_truncate_number(&output, -1.0, 1.0);
 				iq_set_tmp = output * current_max_for_duty;
-			} else {	// 占空比上升阶段 → 直接给最大电流 + 钳位调制比
+			} else {	// 占空比上升阶段，直接给最大的加速电流，让系统去冲！同时把硬件最大允许的占空比钳位在你设定的 duty_set
 				// If the duty cycle is less than or equal to the set duty cycle just limit
 				// the modulation and use the maximum allowed current.
 				motor_now->m_duty_i_term = motor_now->m_motor_state.iq / current_max_for_duty;
@@ -3271,20 +3271,20 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		// Set motor phase
 		{
 			if (!motor_now->m_phase_override) {
-				foc_observer_update(motor_now->m_motor_state.v_alpha, motor_now->m_motor_state.v_beta,
+				foc_observer_update(motor_now->m_motor_state.v_alpha, motor_now->m_motor_state.v_beta,	// 运行 BEMF无感观测器，根据电压和电流，纯数学推算出电角度
 						motor_now->m_motor_state.i_alpha, motor_now->m_motor_state.i_beta,
 						dt, &(motor_now->m_observer_state), &motor_now->m_phase_now_observer, motor_now);
 
 				// Compensate from the phase lag caused by the switching frequency. This is important for motors
 				// that run on high ERPM compared to the switching frequency.
-				motor_now->m_phase_now_observer += motor_now->m_pll_speed * dt * (0.5 + conf_now->foc_observer_offset);
+				motor_now->m_phase_now_observer += motor_now->m_pll_speed * dt * (0.5 + conf_now->foc_observer_offset);	// 高频相位滞后补偿
 				utils_norm_angle_rad((float*)&motor_now->m_phase_now_observer);
 			}
 
 			switch (conf_now->foc_sensor_mode) {
 			case FOC_SENSOR_MODE_ENCODER:
 				if (encoder_index_found() || virtual_motor_is_connected()) {
-					motor_now->m_motor_state.phase = foc_correct_encoder(
+					motor_now->m_motor_state.phase = foc_correct_encoder(	// 根据转速选择观测器还是编码器的角度
 							motor_now->m_phase_now_observer,
 							motor_now->m_phase_now_encoder,
 							motor_now->m_speed_est_fast,
@@ -3307,16 +3307,16 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 					id_set_tmp = 0.0;
 				}
 				break;
-			case FOC_SENSOR_MODE_SENSORLESS:
-				if (motor_now->m_phase_observer_override) {
-					motor_now->m_motor_state.phase = motor_now->m_phase_now_observer_override;
-					motor_now->m_observer_state.x1 = motor_now->m_observer_x1_override;
+			case FOC_SENSOR_MODE_SENSORLESS:	// 起步时，0速时反电动势为0，观测器是瞎的。所以起步瞬间触发override机制，强行捏造一个匀速旋转的角度
+				if (motor_now->m_phase_observer_override) {	// 额外注入一个启动电流把电机拽转起来，一旦转速够了，把角度控制权交还给真实的无感观测器
+					motor_now->m_motor_state.phase = motor_now->m_phase_now_observer_override; // 使用系统"捏造"的匀速旋转角度
+					motor_now->m_observer_state.x1 = motor_now->m_observer_x1_override;	// 强行给观测器的内部状态赋初值，防止后续“复明”切换时产生数学震荡
 					motor_now->m_observer_state.x2 = motor_now->m_observer_x2_override;
-					iq_set_tmp += conf_now->foc_sl_openloop_boost_q * SIGN(iq_set_tmp);
-					if (conf_now->foc_sl_openloop_max_q > conf_now->cc_min_current) {
+					iq_set_tmp += conf_now->foc_sl_openloop_boost_q * SIGN(iq_set_tmp);	// 额外注入一个启动电流
+					if (conf_now->foc_sl_openloop_max_q > conf_now->cc_min_current) {	// 安全限幅
 						utils_truncate_number_abs(&iq_set_tmp, conf_now->foc_sl_openloop_max_q);
 					}
-				} else {
+				} else {	// 速度起来，切入正常闭环阶段，直接使用反电动势观测器算出的真实角度
 					motor_now->m_motor_state.phase = motor_now->m_phase_now_observer;
 				}
 
@@ -3325,16 +3325,16 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 				}
 				break;
 
-			case FOC_SENSOR_MODE_HFI_START:
+			case FOC_SENSOR_MODE_HFI_START:	// 在起步的最初一瞬间，用 HFI “听”一下转子的位置
 				motor_now->m_motor_state.phase = motor_now->m_phase_now_observer;
 
-				if (motor_now->m_phase_observer_override) {
+				if (motor_now->m_phase_observer_override) { // 清空所有强拖计时器，强制关闭 override（强拖模式），实现零速满扭矩起步
 					motor_now->m_hfi.est_done_cnt = 0;
 					motor_now->m_hfi.flip_cnt = 0;
 
 					motor_now->m_min_rpm_hyst_timer = 0.0;
 					motor_now->m_min_rpm_timer = 0.0;
-					motor_now->m_phase_observer_override = false;
+					motor_now->m_phase_observer_override = false;	// 强制关闭 override（强拖模式），实现零速满扭矩起步
 				}
 
 				if (!motor_now->m_phase_override && motor_now->m_control_mode != CONTROL_MODE_OPENLOOP_PHASE) {
@@ -3347,22 +3347,22 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 			case FOC_SENSOR_MODE_HFI_V3:
 			case FOC_SENSOR_MODE_HFI_V4:
 			case FOC_SENSOR_MODE_HFI_V5:
-				if (fabsf(RADPS2RPM_f(motor_now->m_speed_est_fast)) > conf_now->foc_sl_erpm_hfi) {
-					motor_now->m_hfi.observer_zero_time = 0;
+				if (fabsf(RADPS2RPM_f(motor_now->m_speed_est_fast)) > conf_now->foc_sl_erpm_hfi) { // 如果现在的转速大于设定的HFI最高运行转速
+					motor_now->m_hfi.observer_zero_time = 0;	// 重置 HFI 退出计时器
 				} else {
-					motor_now->m_hfi.observer_zero_time += dt;
+					motor_now->m_hfi.observer_zero_time += dt;	// 如果速度低于阈值，开始累加低速时间
 				}
 
-				if (motor_now->m_hfi.observer_zero_time < conf_now->foc_hfi_obs_ovr_sec) {
-					motor_now->m_hfi.angle = motor_now->m_phase_now_observer;
+				if (motor_now->m_hfi.observer_zero_time < conf_now->foc_hfi_obs_ovr_sec) {	// 从高速（BEMF）降到低速（HFI）时的物理对齐
+					motor_now->m_hfi.angle = motor_now->m_phase_now_observer;	// 当刚跌入低速区的一小段时间内，强行把 HFI 内部的角度和速度，设定为BEMF观测器的值，防抖
 					motor_now->m_hfi.double_integrator = -motor_now->m_speed_est_fast;
 				}
 
-				motor_now->m_motor_state.phase = foc_correct_encoder(
-						motor_now->m_phase_now_observer,
-						motor_now->m_hfi.angle,
-						motor_now->m_speed_est_fast,
-						conf_now->foc_sl_erpm_hfi,
+				motor_now->m_motor_state.phase = foc_correct_encoder( // 角度无缝融合 Crossfade
+						motor_now->m_phase_now_observer,		// 参数1：高速时的 BEMF 角度
+						motor_now->m_hfi.angle,					// 参数2：低速时的 HFI 角度
+						motor_now->m_speed_est_fast,			// 当前速度
+						conf_now->foc_sl_erpm_hfi,				// 切换阈值
 						motor_now);
 
 				if (!motor_now->m_phase_override && motor_now->m_control_mode != CONTROL_MODE_OPENLOOP_PHASE) {
@@ -3373,17 +3373,17 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 			if (motor_now->m_control_mode == CONTROL_MODE_HANDBRAKE) {
 				// Force the phase to 0 in handbrake mode so that the current simply locks the rotor.
-				motor_now->m_motor_state.phase = 0.0;
+				motor_now->m_motor_state.phase = 0.0; // 手刹模式：把电角度强行锁死在0度！此时电流全部变成直流，电机死死抱死不动
 			} else if (motor_now->m_control_mode == CONTROL_MODE_OPENLOOP ||
-					motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY) {
+					motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY) { // 旋转开环模式：角度 = 设定的角速度 * 时间。强制产生一个设定的匀速旋转磁场
 				motor_now->m_openloop_angle += dt * motor_now->m_openloop_speed;
 				utils_norm_angle_rad((float*)&motor_now->m_openloop_angle);
 				motor_now->m_motor_state.phase = motor_now->m_openloop_angle;
 			} else if (motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_PHASE ||
-					motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY_PHASE) {
+					motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY_PHASE) { // 定相开环模式：把角度强行设定为上位机指定的某个静态角度
 				motor_now->m_motor_state.phase = motor_now->m_openloop_phase;
 			}
-
+			// 系统最高权限。如果在某些极端的参数标定算法中，系统m_phase_override = true，那么不管算出什么角度，无条件使用 m_phase_now_override
 			if (motor_now->m_phase_override) {
 				motor_now->m_motor_state.phase = motor_now->m_phase_now_override;
 			}
