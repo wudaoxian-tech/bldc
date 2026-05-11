@@ -3296,7 +3296,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 				}
 
 				if (!motor_now->m_phase_override && motor_now->m_control_mode != CONTROL_MODE_OPENLOOP_PHASE) {
-					id_set_tmp = 0.0;
+					id_set_tmp = 0.0;	// 系统处于正常的闭环控制状态（没被强制接管或强制开环测试），把Id给定量设定为0.0A
 				}
 				break;
 			case FOC_SENSOR_MODE_HALL:
@@ -4054,8 +4054,8 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {
 			} else {
 				dt_sw = 1.0 / (motor->m_conf->foc_f_zv / 2.0);
 			}
-			angle_bin_2 += motor->m_pll_speed * ((float)motor->m_hfi.samples / 2.0) * dt_sw;
-
+			angle_bin_2 += motor->m_pll_speed * ((float)motor->m_hfi.samples / 2.0) * dt_sw;	// 补偿转子旋转转过的角度
+			// 使用angle_bin_2 和 angle_bin_2 + π和上一次角度更接近的角度
 			if (fabsf(utils_angle_difference_rad(angle_bin_2 + M_PI, motor->m_hfi.angle)) <
 					fabsf(utils_angle_difference_rad(angle_bin_2, motor->m_hfi.angle))) {
 				angle_bin_2 += M_PI;
@@ -4065,12 +4065,12 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {
 				motor->m_hfi.est_done_cnt++;
 
 				if (fabsf(utils_angle_difference_rad(angle_bin_2, angle_bin_1)) > (M_PI / 2.0)) {
-					motor->m_hfi.flip_cnt++;
+					motor->m_hfi.flip_cnt++; // bin2和bin1的角度差超过90度，计数器+1
 				}
 			}
 
 			if (motor->m_hfi.est_done_cnt >= motor->m_conf->foc_hfi_start_samples) {
-				if (motor->m_hfi.flip_cnt >= (motor->m_conf->foc_hfi_start_samples / 2)) {
+				if (motor->m_hfi.flip_cnt >= (motor->m_conf->foc_hfi_start_samples / 2)) { // 超过一半的采样点超过90度
 					angle_bin_2 += M_PI;
 				}
 				motor->m_hfi.flip_cnt = 0;
@@ -4542,7 +4542,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				mod_beta_v7  += hfi_voltage * s * voltage_normalize;
 			}
 		} else if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V2 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V3) && hfi_est_done) {
-			if (motor->m_hfi.is_samp_n) {
+			 {
 				if (fabsf(state_m->iq_target) > conf_now->foc_hfi_hyst) {
 					motor->m_hfi.sign_last_sample = SIGN(state_m->iq_target);
 				}
@@ -4607,15 +4607,16 @@ static void control_current(motor_all_state_t *motor, float dt) {
 			}
 		} else {
 			if (motor->m_hfi.is_samp_n) {
+				// state_m->i_alpha、state_m->i_beta 控制用的电流与HFI电流的矢量和（电机真实总电流矢量）
 				float sample_now = (utils_tab_cos_32_1[motor->m_hfi.ind * motor->m_hfi.table_fact] * state_m->i_alpha +
-						utils_tab_sin_32_1[motor->m_hfi.ind * motor->m_hfi.table_fact] * state_m->i_beta);
-				float di = (sample_now - motor->m_hfi.prev_sample);
+						utils_tab_sin_32_1[motor->m_hfi.ind * motor->m_hfi.table_fact] * state_m->i_beta); // 电机真实总电流矢量在注入方向的投影
+				float di = (sample_now - motor->m_hfi.prev_sample);	// (Δi+) - (Δi-)
 
 				motor->m_hfi.buffer_current[motor->m_hfi.ind] = di;
 
 				if (di > 0.01) {
 					motor->m_hfi.buffer[motor->m_hfi.ind] = (conf_now->foc_f_zv * di) / hfi_voltage; //Changed to inverse of inductance. This is what is needed for the FFT, not the inductance itself. This is because the measurement has a dc offset, which will leak into other bins when the inverse is takes first.
-				}
+				}	// 以上就是1/L的数值
 
 				motor->m_hfi.ind++;
 				if (motor->m_hfi.ind == motor->m_hfi.samples) {
