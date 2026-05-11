@@ -3127,7 +3127,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 			motor_now->m_motor_state.i_beta = ONE_BY_SQRT3 * ia + TWO_BY_SQRT3 * ib;
 		}
 
-		motor_now->m_i_alpha_sample_with_offset = motor_now->m_motor_state.i_alpha;
+		motor_now->m_i_alpha_sample_with_offset = motor_now->m_motor_state.i_alpha; 	//  被送到代码下半部分的hfi_update() 里，供FFT去精准提取电角度
 		motor_now->m_i_beta_sample_with_offset = motor_now->m_motor_state.i_beta;
 
 		if (motor_now->m_i_alpha_beta_has_offset) {
@@ -3155,8 +3155,8 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		UTILS_LP_FAST(motor_now->m_duty_filtered, duty_now, 0.01);
 		utils_truncate_number_abs((float*)&motor_now->m_duty_filtered, 1.0);
 
-		float duty_set = motor_now->m_duty_cycle_set;
-		bool control_duty = motor_now->m_control_mode == CONTROL_MODE_DUTY ||
+		float duty_set = motor_now->m_duty_cycle_set; 	// 上层给定的目标占空比
+		bool control_duty = motor_now->m_control_mode == CONTROL_MODE_DUTY ||	// 标志位，标记当前是否处于占空比控制类模式
 				motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY ||
 				motor_now->m_control_mode == CONTROL_MODE_OPENLOOP_DUTY_PHASE;
 
@@ -3166,10 +3166,10 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		// mode. Stay in duty=0 for at least 10 cycles to avoid jumping in and out of that mode rapidly
 		// around the threshold.
 		if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {
-			if ((SIGN(speed_fast_now) != SIGN(motor_now->m_br_speed_before) ||
-					SIGN(vq_now) != SIGN(motor_now->m_br_vq_before) ||
+			if ((SIGN(speed_fast_now) != SIGN(motor_now->m_br_speed_before) ||	// 机械转速过零
+					SIGN(vq_now) != SIGN(motor_now->m_br_vq_before) ||			// 电气转矩方向过零
 					fabsf(motor_now->m_duty_filtered) < 0.001 || motor_now->m_br_no_duty_samples < 10) &&
-					motor_now->m_motor_state.i_abs_filter < fabsf(iq_set_tmp)) {
+					motor_now->m_motor_state.i_abs_filter < fabsf(iq_set_tmp)) {	 // 实际电流仍小于目标刹车电流
 				control_duty = true;
 				duty_set = 0.0;
 				motor_now->m_br_no_duty_samples = 0;
@@ -3187,15 +3187,15 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 		// Brake when set ERPM is below min ERPM
 		if (motor_now->m_control_mode == CONTROL_MODE_SPEED &&
-				fabsf(motor_now->m_speed_pid_set_rpm) < conf_now->s_pid_min_erpm) {
+				fabsf(motor_now->m_speed_pid_set_rpm) < conf_now->s_pid_min_erpm) {	// 目标转速低于 s_pid_min_erpm（最小稳定转速），强制占空比归零
 			control_duty = true;
 			duty_set = 0.0;
 		}
 
 		// Reset integrator when leaving duty cycle mode, as the windup protection is not too fast. Making
 		// better windup protection is probably better, but not easy.
-		if (!control_duty && motor_now->m_was_control_duty) {
-			motor_now->m_motor_state.vq_int = motor_now->m_motor_state.vq;
+		if (!control_duty && motor_now->m_was_control_duty) {	// 从占空比模式切换回电流模式
+			motor_now->m_motor_state.vq_int = motor_now->m_motor_state.vq;	// Q 轴 PI 积分器 vq_int 初始化为当前实际输出电压 vq
 			if (conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_BEMF ||
 					conf_now->foc_cc_decoupling == FOC_CC_DECOUPLING_CROSS_BEMF) {
 				motor_now->m_motor_state.vq_int -= motor_now->m_pll_speed * conf_now->foc_motor_flux_linkage;
@@ -3203,18 +3203,18 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		}
 		motor_now->m_was_control_duty = control_duty;
 
-		float current_max_for_duty = conf_now->lo_current_max;
-		if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {
+		float current_max_for_duty = conf_now->lo_current_max;	
+		if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {	// 占空比控制的电流限幅基准
 			current_max_for_duty = fabsf(conf_now->lo_current_min);
 		}
-
+		// 在电流模式下，持续用当前实际 Q 轴电流归一化值更新 m_duty_i_term。确保未来切入占空比模式时，PI 积分器从合理初值开始，避免从零累积导致响应延迟
 		if (!control_duty) {
 			motor_now->m_duty_i_term = motor_now->m_motor_state.iq / current_max_for_duty;
 			motor_now->duty_was_pi = false;
 		}
 
 		if (control_duty) {
-			// Duty cycle control
+			// Duty cycle control, 占空比下降/维持阶段，启用 PI 闭环
 			if (fabsf(duty_set) < (duty_abs - 0.01) &&
 					(!motor_now->duty_was_pi || SIGN(motor_now->duty_pi_duty_last) == SIGN(duty_now))) {
 				// Truncating the duty cycle here would be dangerous, so run a PI controller.
@@ -3224,7 +3224,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 				// Reset the integrator in duty mode to not increase the duty if the load suddenly changes. In braking
 				// mode this would cause a discontinuity, so there we want to keep the value of the integrator.
-				if (motor_now->m_control_mode == CONTROL_MODE_DUTY) {
+				if (motor_now->m_control_mode == CONTROL_MODE_DUTY) {	// 纯占空比模式下，方向翻转时清零积分防反向超调
 					if (duty_now > 0.0) {
 						if (motor_now->m_duty_i_term > 0.0) {
 							motor_now->m_duty_i_term = 0.0;
@@ -3251,7 +3251,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 				float output = p_term + motor_now->m_duty_i_term;
 				utils_truncate_number(&output, -1.0, 1.0);
 				iq_set_tmp = output * current_max_for_duty;
-			} else {
+			} else {	// 占空比上升阶段 → 直接给最大电流 + 钳位调制比
 				// If the duty cycle is less than or equal to the set duty cycle just limit
 				// the modulation and use the maximum allowed current.
 				motor_now->m_duty_i_term = motor_now->m_motor_state.iq / current_max_for_duty;
@@ -3265,7 +3265,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 			}
 		} else if (motor_now->m_control_mode == CONTROL_MODE_CURRENT_BRAKE) {
 			// Braking
-			iq_set_tmp = -SIGN(speed_fast_now) * fabsf(iq_set_tmp);
+			iq_set_tmp = -SIGN(speed_fast_now) * fabsf(iq_set_tmp);	//  强制iq_set_tmp 符号与转速相反
 		}
 
 		// Set motor phase
