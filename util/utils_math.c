@@ -306,7 +306,7 @@ void utils_fast_sincos(float angle, float *sin, float *cos) {
  * @param cos
  * A pointer to store the cosine value.
  */
-void utils_fast_sincos_better(float angle, float *sin, float *cos) {
+void utils_fast_sincos_better(float angle, float *sin, float *cos) { // 用多项式近似快速计算给定角度的sin, cos
 	//always wrap input angle to -PI..PI
 	while (angle < -M_PI) {
 		angle += 2.0 * M_PI;

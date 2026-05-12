@@ -4075,7 +4075,7 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {
 				}
 				motor->m_hfi.flip_cnt = 0;
 
-				if (motor->m_conf->foc_sensor_mode == FOC_SENSOR_MODE_HFI_START) {
+				if (motor->m_conf->foc_sensor_mode == FOC_SENSOR_MODE_HFI_START) {	// 知道角度后，对观测器赋初值
 					float s, c;
 					utils_fast_sincos_better(angle_bin_2, &s, &c);
 					motor->m_observer_state.x1 = c * motor->m_conf->foc_motor_flux_linkage;
