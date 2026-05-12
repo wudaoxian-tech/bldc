@@ -4493,7 +4493,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 					conf_now->foc_hfi_voltage_run, conf_now->foc_hfi_voltage_max);
 		}
 
-		utils_truncate_number_abs(&hfi_voltage, state_m->v_bus * (1.0 - fabsf(state_m->duty_now)) * SQRT3_BY_2 * (2.0 / 3.0) * 0.95);
+		utils_truncate_number_abs(&hfi_voltage, state_m->v_bus * (1.0 - fabsf(state_m->duty_now)) * SQRT3_BY_2 * (2.0 / 3.0) * 0.95);	// 注入电压不超过95%占空比
 
 		if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V4 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V5) && hfi_est_done) {	// HFI V4/V5版本
 			if (motor->m_hfi.is_samp_n) {
