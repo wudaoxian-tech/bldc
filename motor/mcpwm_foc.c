@@ -2869,7 +2869,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 #else
 		float curr0 = (GET_CURRENT1() - conf_other->foc_offsets_current[0]) * FAC_CURRENT1;
 		float curr1 = (GET_CURRENT2() - conf_other->foc_offsets_current[1]) * FAC_CURRENT2;
-
+		// 瞬间把上一拍准备好的占空比砸给底层硬件，改变电机的电压
 		TIMER_UPDATE_DUTY_M1(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
 #ifdef HW_HAS_DUAL_PARALLEL	// 两套功率板并联驱动同一个电机
 		TIMER_UPDATE_DUTY_M2(motor_other->m_duty1_next, motor_other->m_duty2_next, motor_other->m_duty3_next);
@@ -3130,7 +3130,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		motor_now->m_i_alpha_sample_with_offset = motor_now->m_motor_state.i_alpha; 	//  被送到代码下半部分的hfi_update() 里，供FFT去精准提取电角度
 		motor_now->m_i_beta_sample_with_offset = motor_now->m_motor_state.i_beta;
 
-		if (motor_now->m_i_alpha_beta_has_offset) {
+		if (motor_now->m_i_alpha_beta_has_offset) {		// 如包含HFI数据，做平均，把HFI的纹波滤除
 			motor_now->m_motor_state.i_alpha = 0.5 * (motor_now->m_motor_state.i_alpha + motor_now->m_i_alpha_sample_next);
 			motor_now->m_motor_state.i_beta = 0.5 * (motor_now->m_motor_state.i_beta + motor_now->m_i_beta_sample_next);
 			motor_now->m_i_alpha_beta_has_offset = false;
@@ -4497,17 +4497,17 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 		if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V4 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V5) && hfi_est_done) {	// HFI V4/V5版本
 			if (motor->m_hfi.is_samp_n) {
-				float sample_now = c * motor->m_i_beta_sample_with_offset - s * motor->m_i_alpha_sample_with_offset;
+				float sample_now = c * motor->m_i_beta_sample_with_offset - s * motor->m_i_alpha_sample_with_offset;	// q轴电流，垂直于注入方向，角度误差信息在这里 
 				float di = (motor->m_hfi.prev_sample - sample_now);
 
 				if (!motor->m_using_encoder) {
 					motor->m_hfi.double_integrator = -motor->m_speed_est_fast;
 					motor->m_hfi.angle = motor->m_phase_now_observer;
 				} else {
-					float hfi_dt = dt * 2.0;
+					float hfi_dt = dt * 2.0;	// HFI_V5的注入时间间隔
 #ifdef HW_HAS_PHASE_SHUNTS
 					if (conf_now->foc_control_sample_mode != FOC_CONTROL_SAMPLE_MODE_V0_V7 && conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V4) {
-						hfi_dt = dt;
+						hfi_dt = dt;	// HFI_V4的注入时间间隔
 					}
 #endif
 					foc_hfi_adjust_angle(
@@ -4517,10 +4517,10 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				}
 
 #ifdef HW_HAS_PHASE_SHUNTS
-				if (conf_now->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V5) {
+				if (conf_now->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V5) {	// HFI_V5
 					mod_alpha_v7 -= hfi_voltage * c * voltage_normalize;
 					mod_beta_v7 -= hfi_voltage * s * voltage_normalize;
-				} else {
+				} else {	// HFI_V4
 					motor->m_hfi.prev_sample = c * motor->m_i_beta_sample_next - s * motor->m_i_alpha_sample_next;
 					// V0/V7 差分注入：获取矢量电压
 					mod_alpha_v0 -= hfi_voltage * c * voltage_normalize;
@@ -4555,10 +4555,10 @@ static void control_current(motor_all_state_t *motor, float dt) {
 					motor->m_hfi.double_integrator = -motor->m_speed_est_fast;
 					motor->m_hfi.angle = motor->m_phase_now_observer;
 				} else {
-					float hfi_dt = dt * 2.0;
+					float hfi_dt = dt * 2.0;	// HFI_V3的注入间隔，仅在V7注入
 #ifdef HW_HAS_PHASE_SHUNTS
 					if (conf_now->foc_control_sample_mode != FOC_CONTROL_SAMPLE_MODE_V0_V7 && conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V2) {
-						hfi_dt = dt;
+						hfi_dt = dt;			// HFI_V2的注入间隔，在V0和V7注入符号相反的Vinj
 					}
 #endif
 					foc_hfi_adjust_angle(	// ang_err放入PLL获取角度
@@ -4580,10 +4580,10 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				}
 
 #ifdef HW_HAS_PHASE_SHUNTS
-				if (conf_now->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V3) {
+				if (conf_now->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V3) { // HFI_V3
 					mod_alpha_v7 += hfi_voltage * motor->m_hfi.cos_last * voltage_normalize;
 					mod_beta_v7 += hfi_voltage * motor->m_hfi.sin_last * voltage_normalize;
-				} else {
+				} else {	// HFI_V2模式， V0 时刻加了一个正向电压，还在 V7 时刻加了一个反向电压
 					motor->m_hfi.prev_sample = motor->m_hfi.cos_last * motor->m_i_alpha_sample_next +
 							motor->m_hfi.sin_last * motor->m_i_beta_sample_next;
 
@@ -4592,9 +4592,9 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 					mod_alpha_v7 -= hfi_voltage * motor->m_hfi.cos_last * voltage_normalize;
 					mod_beta_v7 -= hfi_voltage * motor->m_hfi.sin_last * voltage_normalize;
-
-					motor->m_hfi.is_samp_n = !motor->m_hfi.is_samp_n;
-					motor->m_i_alpha_beta_has_offset = true;
+					// 占空比被一推一拉，硬生生造出了极其强烈的电流纹波，所以它必须置位 m_i_alpha_beta_has_offset = true，让底层的平均滤波器
+					motor->m_hfi.is_samp_n = !motor->m_hfi.is_samp_n;		// 正、负半周注入的标志位
+					motor->m_i_alpha_beta_has_offset = true;				// HFI正负半周滤波后用于控制的标志位
 				}
 #else
 				mod_alpha_v7 += hfi_voltage * motor->m_hfi.cos_last * voltage_normalize;
