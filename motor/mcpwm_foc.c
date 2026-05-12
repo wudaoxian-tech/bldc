@@ -3565,7 +3565,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		utils_truncate_number_abs((float*)&motor_now->m_motor_state.mod_q_filter, 1.0);
 	}
 
-	// Calculate duty cycle
+	// Calculate duty cycle，就是SVPWM输出的有效时间占比（非零矢量的时间占比）
 	motor_now->m_motor_state.duty_now = SIGN(motor_now->m_motor_state.vq) *
 			NORM2_f(motor_now->m_motor_state.mod_d, motor_now->m_motor_state.mod_q) * TWO_BY_SQRT3; // 调制系数，线性区理论最大[-1, 1]，过调制II区[-1.1547, 1.1547]
 
@@ -4054,7 +4054,7 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {
 			} else {
 				dt_sw = 1.0 / (motor->m_conf->foc_f_zv / 2.0);
 			}
-			angle_bin_2 += motor->m_pll_speed * ((float)motor->m_hfi.samples / 2.0) * dt_sw;	// 补偿转子旋转转过的角度
+			angle_bin_2 += motor->m_pll_speed * ((float)motor->m_hfi.samples / 2.0) * dt_sw;	// 补偿转子旋转转过的角度，群延迟的时间
 			// 使用angle_bin_2 和 angle_bin_2 + π和上一次角度更接近的角度
 			if (fabsf(utils_angle_difference_rad(angle_bin_2 + M_PI, motor->m_hfi.angle)) <
 					fabsf(utils_angle_difference_rad(angle_bin_2, motor->m_hfi.angle))) {
@@ -4485,7 +4485,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 		float mod_beta_v0 = state_m->mod_beta_raw;
 #endif
 
-		float hfi_voltage;
+		float hfi_voltage;			// 获取HFI的Vinj
 		if (motor->m_hfi.est_done_cnt < conf_now->foc_hfi_start_samples) {
 			hfi_voltage = conf_now->foc_hfi_voltage_start;
 		} else {
@@ -4495,7 +4495,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 		utils_truncate_number_abs(&hfi_voltage, state_m->v_bus * (1.0 - fabsf(state_m->duty_now)) * SQRT3_BY_2 * (2.0 / 3.0) * 0.95);
 
-		if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V4 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V5) && hfi_est_done) {
+		if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V4 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V5) && hfi_est_done) {	// HFI V4/V5版本
 			if (motor->m_hfi.is_samp_n) {
 				float sample_now = c * motor->m_i_beta_sample_with_offset - s * motor->m_i_alpha_sample_with_offset;
 				float di = (motor->m_hfi.prev_sample - sample_now);
@@ -4522,7 +4522,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 					mod_beta_v7 -= hfi_voltage * s * voltage_normalize;
 				} else {
 					motor->m_hfi.prev_sample = c * motor->m_i_beta_sample_next - s * motor->m_i_alpha_sample_next;
-
+					// V0/V7 差分注入：获取矢量电压
 					mod_alpha_v0 -= hfi_voltage * c * voltage_normalize;
 					mod_beta_v0 -= hfi_voltage * s * voltage_normalize;
 
@@ -4541,15 +4541,15 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				mod_alpha_v7 += hfi_voltage * c * voltage_normalize;
 				mod_beta_v7  += hfi_voltage * s * voltage_normalize;
 			}
-		} else if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V2 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V3) && hfi_est_done) {
-			 {
-				if (fabsf(state_m->iq_target) > conf_now->foc_hfi_hyst) {
+		} else if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V2 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V3) && hfi_est_done) {	// HFI V2/V3 算法
+			if (motor->m_hfi.is_samp_n) {
+				if (fabsf(state_m->iq_target) > conf_now->foc_hfi_hyst) {	// 使用Iq给定值，判断转矩电流的正负
 					motor->m_hfi.sign_last_sample = SIGN(state_m->iq_target);
 				}
 
 				float sample_now = motor->m_hfi.cos_last * motor->m_i_alpha_sample_with_offset +
-						motor->m_hfi.sin_last * motor->m_i_beta_sample_with_offset;
-				float di = (sample_now - motor->m_hfi.prev_sample);
+						motor->m_hfi.sin_last * motor->m_i_beta_sample_with_offset;					// 注入电流矢量
+				float di = (sample_now - motor->m_hfi.prev_sample);									// 获取两个方向电流差值
 
 				if (!motor->m_using_encoder) {
 					motor->m_hfi.double_integrator = -motor->m_speed_est_fast;
@@ -4561,7 +4561,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 						hfi_dt = dt;
 					}
 #endif
-					foc_hfi_adjust_angle(
+					foc_hfi_adjust_angle(	// ang_err放入PLL获取角度
 							motor->m_hfi.sign_last_sample * ((conf_now->foc_f_zv * di) /
 									hfi_voltage - motor->p_v2_v3_inv_avg_half) / motor->p_inv_ld_lq,
 							motor, hfi_dt
@@ -4569,7 +4569,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				}
 
 				// Use precomputed rotation matrix
-				if (motor->m_hfi.sign_last_sample > 0) {
+				if (motor->m_hfi.sign_last_sample > 0) {	// Iq_Target判断sample，再基于sample判断注入q轴电流的+45°，还是-45°
 					// +45 Degrees
 					motor->m_hfi.sin_last = ONE_BY_SQRT2 * (c + s);
 					motor->m_hfi.cos_last = ONE_BY_SQRT2 * (c - s);
@@ -4605,7 +4605,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				mod_alpha_v7 -= hfi_voltage * motor->m_hfi.cos_last * voltage_normalize;
 				mod_beta_v7  -= hfi_voltage * motor->m_hfi.sin_last * voltage_normalize;
 			}
-		} else {
+		} else {	// 旋转高频注入算法，V1 版本
 			if (motor->m_hfi.is_samp_n) {
 				// state_m->i_alpha、state_m->i_beta 控制用的电流与HFI电流的矢量和（电机真实总电流矢量）
 				float sample_now = (utils_tab_cos_32_1[motor->m_hfi.ind * motor->m_hfi.table_fact] * state_m->i_alpha +
@@ -4623,7 +4623,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 					motor->m_hfi.ind = 0;
 					motor->m_hfi.ready = true;
 				}
-
+				// 旋转注入：获取矢量电压
 				mod_alpha_v7 += hfi_voltage * utils_tab_cos_32_1[motor->m_hfi.ind * motor->m_hfi.table_fact] * voltage_normalize;
 				mod_beta_v7  += hfi_voltage * utils_tab_sin_32_1[motor->m_hfi.ind * motor->m_hfi.table_fact] * voltage_normalize;
 			} else {
