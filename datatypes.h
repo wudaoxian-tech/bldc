@@ -34,7 +34,7 @@ typedef enum {
 typedef enum {
    MC_STATE_OFF = 0,
    MC_STATE_DETECTING,
-   MC_STATE_RUNNING,
+   MC_STATE_RUNNING,		// 发波
    MC_STATE_FULL_BRAKE,
 } mc_state;
 
@@ -122,15 +122,15 @@ typedef enum {
 	FOC_CC_DECOUPLING_BEMF,
 	FOC_CC_DECOUPLING_CROSS_BEMF
 } mc_foc_cc_decoupling_mode;
-
+// 带_LAMBDA_COMP后缀，根据实际运行的反馈误差，在线实时调整（补偿）观测器模型里的λ半径
 typedef enum {
-	FOC_OBSERVER_ORTEGA_ORIGINAL = 0,
-	FOC_OBSERVER_MXLEMMING,
+	FOC_OBSERVER_ORTEGA_ORIGINAL = 0,	// Romeo Ortega 提出的一种非线性自适应磁链观测器模型，系统默认
+	FOC_OBSERVER_MXLEMMING, 			// mxlemming，VESC社区里一位开发者;高凸极率电机、重载起步和急加速的表现优于默认版
 	FOC_OBSERVER_ORTEGA_LAMBDA_COMP,
 	FOC_OBSERVER_MXLEMMING_LAMBDA_COMP,
-	FOC_OBSERVER_MXV,
+	FOC_OBSERVER_MXV,					// MXV 则是 Mxlemming + Vedder两人名字的缩写		
 	FOC_OBSERVER_MXV_LAMBDA_COMP,
-	FOC_OBSERVER_MXV_LAMBDA_COMP_LIN,
+	FOC_OBSERVER_MXV_LAMBDA_COMP_LIN,	// Linearised。非线性补偿有时会在极低速引起环路震荡，对误差补偿方程进行了线性化展开（泰勒展开近似），使得λ的自适应补偿过程既平滑又无延迟
 } mc_foc_observer_type;
 
 typedef enum {

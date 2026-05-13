@@ -3456,7 +3456,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		motor_now->m_motor_state.i_abs_filter = 0.0;
 
 		// Track back emf
-		update_valpha_vbeta(motor_now, 0.0, 0.0);
+		update_valpha_vbeta(motor_now, 0.0, 0.0);	// 侦听反电势
 
 		// Run observer
 		foc_observer_update(motor_now->m_motor_state.v_alpha, motor_now->m_motor_state.v_beta,
@@ -4722,7 +4722,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 	if (motor->m_state == MC_STATE_RUNNING) {
 		ofs_volt = conf_now->foc_offsets_voltage;
 	}
-
+// 以下通过AD获取相电压
 #ifdef HW_HAS_DUAL_MOTORS
 #ifdef HW_HAS_3_SHUNTS
 	if (&m_motor_1 != motor) {
@@ -4757,7 +4757,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 #endif
 #endif
 
-	// Deadtime compensation
+	// Deadtime compensation，死区补偿
 	float s = state_m->phase_sin;
 	float c = state_m->phase_cos;
 	const float i_alpha_filter = c * state_m->id_filter - s * state_m->iq_filter;
@@ -4786,7 +4786,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 
 	// v_alpha = 2/3*Va - 1/3*Vb - 1/3*Vc
 	// v_beta  = 1/sqrt(3)*Vb - 1/sqrt(3)*Vc
-	float v_alpha = (1.0 / 3.0) * (2.0 * Va - Vb - Vc);
+	float v_alpha = (1.0 / 3.0) * (2.0 * Va - Vb - Vc);	// 三相物理电压，变成静止坐标系下的 α-β 轴电压
 	float v_beta = ONE_BY_SQRT3 * (Vb - Vc);
 
 	// Keep the modulation updated so that the filter stays updated
@@ -4795,7 +4795,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 		/* voltage_normalize = 1/(2/3*V_bus) */
 		const float voltage_normalize = 1.5 / state_m->v_bus;
 
-		mod_alpha = v_alpha * voltage_normalize;
+		mod_alpha = v_alpha * voltage_normalize;	// 占空比在α轴投影；电机没有发波，使用采样电压折算的相电压
 		mod_beta = v_beta * voltage_normalize;
 	}
 
@@ -4806,10 +4806,10 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 		filter_const = utils_map(abs_rpm, 0.0, 10000.0, 0.01, 1.0);
 	}
 
-	float v_mag = NORM2_f(v_alpha, v_beta);
+	float v_mag = NORM2_f(v_alpha, v_beta);			// 基于ADC相电压折算的电压幅值
 	// The 0.1 * v_mag term below compensates for the filter attenuation as the speed increases.
 	// It is chosen by trial and error, so this can be improved.
-	UTILS_LP_FAST(state_m->v_mag_filter, v_mag + 0.1 * v_mag * filter_const, filter_const);
+	UTILS_LP_FAST(state_m->v_mag_filter, v_mag + 0.1 * v_mag * filter_const, filter_const);	// 0.1 * v_mag 高频下赋值衰减的补偿
 	UTILS_LP_FAST(state_m->mod_alpha_filter, mod_alpha, filter_const);
 	UTILS_LP_FAST(state_m->mod_beta_filter, mod_beta, filter_const);
 	UTILS_NAN_ZERO(state_m->v_mag_filter);
@@ -4820,20 +4820,20 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 	mod_beta = state_m->mod_beta_filter;
 
 	if (motor->m_state == MC_STATE_RUNNING) {
-#ifdef HW_HAS_PHASE_FILTERS
-		if (conf_now->foc_phase_filter_enable && abs_rpm < conf_now->foc_phase_filter_max_erpm) {
+#ifdef HW_HAS_PHASE_FILTERS	// 如带有硬件相电压低通滤波电路
+		if (conf_now->foc_phase_filter_enable && abs_rpm < conf_now->foc_phase_filter_max_erpm) { // 融合软件与硬件采样占空比的信息
 			float mod_mag = NORM2_f(mod_alpha, mod_beta);
-			float v_mag_mod = mod_mag * (2.0 / 3.0) * state_m->v_bus;
+			float v_mag_mod = mod_mag * (2.0 / 3.0) * state_m->v_bus;	// 软件计算的物理电压幅值大小
 
-			if (!conf_now->foc_phase_filter_disable_fault && fabsf(v_mag_mod - state_m->v_mag_filter) > (conf_now->l_max_vin * 0.05)) {
+			if (!conf_now->foc_phase_filter_disable_fault && fabsf(v_mag_mod - state_m->v_mag_filter) > (conf_now->l_max_vin * 0.05)) { // 软件计算的电压幅值与采样幅值超过阈值报错
 				mc_interface_set_fault_info("v_mag_mod: %.2f, v_mag_filter: %.2f", 2, v_mag_mod, state_m->v_mag_filter);
 				mc_interface_fault_stop(FAULT_CODE_PHASE_FILTER, &m_motor_1 != motor, true);
 			}
 
 			// Compensate for the phase delay by using the direction of the modulation
 			// together with the magnitude from the phase filters
-			if (mod_mag > 0.04) {
-				state_m->v_alpha = mod_alpha / mod_mag * state_m->v_mag_filter;
+			if (mod_mag > 0.04) {	// 如果 mod_mag 非常小（比如接近 0），公式里 mod_alpha / mod_mag 就会发生除以零或者产生极大的浮点数溢出，单片机 FPU 会直接崩溃报错
+				state_m->v_alpha = mod_alpha / mod_mag * state_m->v_mag_filter;	// 提取软件的轴的方向，幅值使用ADC采样的数据
 				state_m->v_beta = mod_beta / mod_mag * state_m->v_mag_filter;
 			} else {
 				state_m->v_alpha = v_alpha;
@@ -4843,14 +4843,14 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 			state_m->is_using_phase_filters = true;
 		} else {
 #endif
-			state_m->v_alpha = mod_alpha * (2.0 / 3.0) * state_m->v_bus;
+			state_m->v_alpha = mod_alpha * (2.0 / 3.0) * state_m->v_bus;	// 系统在发波，使用软件补偿后的占空比乘以母线电压，不用 ADC 采到的相电压
 			state_m->v_beta = mod_beta * (2.0 / 3.0) * state_m->v_bus;
 			state_m->is_using_phase_filters = false;
 #ifdef HW_HAS_PHASE_FILTERS
 		}
 #endif
 	} else {
-		state_m->v_alpha = v_alpha;
+		state_m->v_alpha = v_alpha;		// 不发波，直接使用采样的相电压折算成 α-β 轴电压赋值
 		state_m->v_beta = v_beta;
 		state_m->is_using_phase_filters = false;
 
@@ -4996,7 +4996,7 @@ static void start_pwm_hw(motor_all_state_t *motor) {
 	motor->m_pwm_mode = FOC_PWM_ENABLED;
 }
 
-static void full_brake_hw(motor_all_state_t *motor) {
+static void full_brake_hw(motor_all_state_t *motor) {	// 三相三个上管或三个下管同时打开
 	if (motor == &m_motor_1) {
 		TIM_SelectOCxM(TIM1, TIM_Channel_1, TIM_ForcedAction_InActive);
 		TIM_CCxCmd(TIM1, TIM_Channel_1, TIM_CCx_Enable);

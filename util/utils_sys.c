@@ -86,7 +86,7 @@ uint8_t utils_second_motor_id(void) {
  * @return
  * The state of the three hall sensors.
  */
-int utils_read_hall(bool is_second_motor, int samples) {
+int utils_read_hall(bool is_second_motor, int samples) {	// 霍尔状态值
 	samples = 1 + 2 * samples;
 
 	int h1 = 0, h2 = 0, h3 = 0;
@@ -94,7 +94,7 @@ int utils_read_hall(bool is_second_motor, int samples) {
 
 	if (is_second_motor) {
 		while (samples--) {
-			h1 += READ_HALL1_2();
+			h1 += READ_HALL1_2();	// 多次读取
 			h2 += READ_HALL2_2();
 			h3 += READ_HALL3_2();
 		}

@@ -87,7 +87,7 @@ void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_bet
 
 	switch (conf_now->foc_observer_type) {
 	case FOC_OBSERVER_ORTEGA_ORIGINAL: {
-		float err = SQ(lambda) - (SQ(state->x1 - L_ia) + SQ(state->x2 - L_ib));
+		float err = SQ(lambda) - (SQ(state->x1 - L_ia) + SQ(state->x2 - L_ib));	// 观测器的误差项
 
 		// Forcing this term to stay negative helps convergence according to
 		//
@@ -97,7 +97,7 @@ void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_bet
 		if (err > 0.0) {
 			err = 0.0;
 		}
-
+		// 含误差项的观测器方程
 		float x1_dot = v_alpha - R_ia + gamma_half * (state->x1 - L_ia) * err;
 		float x2_dot = v_beta - R_ib + gamma_half * (state->x2 - L_ib) * err;
 
@@ -125,7 +125,7 @@ void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_bet
 			state->lambda_est += 0.1 * gamma_half * state->lambda_est * -err * dt;
 			utils_truncate_number(&(state->lambda_est), lambda * 0.3, lambda * 2.5);
 
-			utils_truncate_number_abs(&(state->x1), state->lambda_est);
+			utils_truncate_number_abs(&(state->x1), state->lambda_est);	// 不是用反馈来收敛，用限幅截断维持稳定
 			utils_truncate_number_abs(&(state->x2), state->lambda_est);
 		} else {
 			utils_truncate_number_abs(&(state->x1), lambda);
@@ -153,7 +153,7 @@ void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_bet
 
 		float x1_dot = v_alpha - R_ia + gamma_half * (state->x1 - L_ia) * err;
 		float x2_dot = v_beta - R_ib + gamma_half * (state->x2 - L_ib) * err;
-
+		// 对应状态的微分方程
 		state->x1 += x1_dot * dt;
 		state->x2 += x2_dot * dt;
 	} break;
@@ -161,7 +161,7 @@ void foc_observer_update(float v_alpha, float v_beta, float i_alpha, float i_bet
 	case FOC_OBSERVER_MXV:
 	case FOC_OBSERVER_MXV_LAMBDA_COMP:
 	case FOC_OBSERVER_MXV_LAMBDA_COMP_LIN:
-		state->x1 += (v_alpha - R_ia) * dt;
+		state->x1 += (v_alpha - R_ia) * dt;	// 对(v - Ri)积分，得到总磁链
 		state->x2 += (v_beta - R_ib) * dt;
 
 		if (conf_now->foc_observer_type == FOC_OBSERVER_MXV_LAMBDA_COMP ||
@@ -586,14 +586,14 @@ float foc_correct_encoder(float obs_angle, float enc_angle, float speed,
 // 把霍尔传感器[60°一跳]的原始角度，变成FOC控制需要的[连续、平滑、精准]的转子角度，同时实现低速用霍尔、高速切无感的无缝切换
 float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall_val) {
 	mc_configuration *conf_now = motor->m_conf;
-	motor->m_hall_dt_diff_now += dt;
+	motor->m_hall_dt_diff_now += dt;		// 计时
 
-	float rpm_abs = fabsf(RADPS2RPM_f(motor->m_pll_speed)); // 把rad/s转换成rpm
+	float rpm_abs = fabsf(RADPS2RPM_f(motor->m_pll_speed)); 			// PLL计算的RPM
 	float rad_per_sec_hall = (M_PI / 3.0) / motor->m_hall_dt_diff_last; // 60°电气角除上两次霍尔跳变的时间间隔
-	float rpm_abs_hall = fabsf(RADPS2RPM_f(rad_per_sec_hall));
+	float rpm_abs_hall = fabsf(RADPS2RPM_f(rad_per_sec_hall));			// 霍尔计算的RPM
 
-	motor->m_using_hall = rpm_abs < conf_now->foc_sl_erpm;
-	float angle_old = angle;
+	motor->m_using_hall = rpm_abs < conf_now->foc_sl_erpm;				// 速度小于阈值，用霍尔
+	float angle_old = angle;	// 传入无感观测器算出来的角度 m_phase_now_observer
 
 	int ang_hall_int = conf_now->foc_hall_table[hall_val];
 
@@ -606,30 +606,30 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 			// Previous angle not valid
 			motor->m_ang_hall_int_prev = ang_hall_int;
 			motor->m_ang_hall = ang_hall_now;
-		} else if (ang_hall_int != motor->m_ang_hall_int_prev) {
-			int diff = ang_hall_int - motor->m_ang_hall_int_prev;
-			if (diff > 100) {
+		} else if (ang_hall_int != motor->m_ang_hall_int_prev) {	// 发生霍尔跳变
+			int diff = ang_hall_int - motor->m_ang_hall_int_prev;	// 发生霍尔角度跳变，新角度 - 老角度
+			if (diff > 100) {	// 限制在 -100 ~ 100之间，把 0~360° 映射为了0∼200的整数
 				diff -= 200;
 			} else if (diff < -100) {
 				diff += 200;
 			}
 
 			// This is only valid if the direction did not just change. If it did, we use the
-			// last speed together with the sign right now.
-			if (SIGN(diff) == SIGN(motor->m_hall_dt_diff_last)) {
+			// last speed together with the sign right now. SIGN(diff) 最近跨越边界的方向；SIGN(m_hall_dt_diff_last) 上一次跨越边界的方向
+			if (SIGN(diff) == SIGN(motor->m_hall_dt_diff_last)) { // 方向没变，车子在顺滑地单向行驶
 				if (diff > 0) {
-					motor->m_hall_dt_diff_last = motor->m_hall_dt_diff_now;
+					motor->m_hall_dt_diff_last = motor->m_hall_dt_diff_now;		// 正转，存入正的时间
 				} else {
-					motor->m_hall_dt_diff_last = -motor->m_hall_dt_diff_now;
+					motor->m_hall_dt_diff_last = -motor->m_hall_dt_diff_now;	// 反转，存入负的时间
 				}
-			} else {
-				motor->m_hall_dt_diff_last = -motor->m_hall_dt_diff_last;
+			} else {	// 方向突然变，转子发生折返
+				motor->m_hall_dt_diff_last = -motor->m_hall_dt_diff_last;	//	强行认为此时电机转速没变，仅方向反了
 			}
 
-			motor->m_hall_dt_diff_now = 0.0;
+			motor->m_hall_dt_diff_now = 0.0;	// 计时器清零
 
 			// A transition was just made. The angle is in the middle of the new and old angle.
-			int ang_avg = motor->m_ang_hall_int_prev + diff / 2;
+			int ang_avg = motor->m_ang_hall_int_prev + diff / 2;	// 发生跳变的这一瞬间，上一个扇区中心 + 30°
 			ang_avg %= 200;
 
 			// Scale to the circle and convert to radians
@@ -642,16 +642,16 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 				fabsf(motor->m_hall_dt_diff_last))) < conf_now->foc_hall_interp_erpm) {
 			// Don't interpolate on very low speed, just use the closest hall sensor. The reason is that we might
 			// get stuck at 60 degrees off if a direction change happens between two steps.
-			motor->m_ang_hall = ang_hall_now;
+			motor->m_ang_hall = ang_hall_now;	// 极低速下，直接把霍尔扇区的中心角度赋给当前角度，不插值
 		} else {
-			// Interpolate
-			float diff = utils_angle_difference_rad(motor->m_ang_hall, ang_hall_now);
-			if (fabsf(diff) < ((2.0 * M_PI) / 12.0) || SIGN(diff) != SIGN(rad_per_sec_hall)) {
+			// Interpolate，ang_hall_now是最新扇区的中心角度
+			float diff = utils_angle_difference_rad(motor->m_ang_hall, ang_hall_now);	// 插值角度 (m_ang_hall) 和 当前霍尔扇区的中心 (ang_hall_now) 角度差
+			if (fabsf(diff) < ((2.0 * M_PI) / 12.0) || SIGN(diff) != SIGN(rad_per_sec_hall)) {	// 偏差小于 30度，或者偏差的符号与转速方向相反
 				// Do interpolation
-				motor->m_ang_hall += rad_per_sec_hall * dt;
+				motor->m_ang_hall += rad_per_sec_hall * dt;	// 插值
 			} else {
 				// We are too far away with the interpolation
-				motor->m_ang_hall -= diff * 0.01;
+				motor->m_ang_hall -= diff * 0.01;	// 用一个极弱的 P 控制器把它拽回来
 			}
 		}
 
@@ -659,20 +659,20 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 
 		// Limit hall sensor rate of change. This will reduce current spikes in the current controllers when the angle estimation
 		// changes fast.
-		float angle_step = (fmaxf(rpm_abs_hall, conf_now->foc_hall_interp_erpm) / 60.0) * 2.0 * M_PI * dt * 1.5;
+		float angle_step = (fmaxf(rpm_abs_hall, conf_now->foc_hall_interp_erpm) / 60.0) * 2.0 * M_PI * dt * 1.5;	// 真实转速，一个dt内转多少度
 		float angle_diff = utils_angle_difference_rad(motor->m_ang_hall, motor->m_ang_hall_rate_limited);
-		if (fabsf(angle_diff) < angle_step) {
+		if (fabsf(angle_diff) < angle_step) {	// 变化很小，属于正常旋转。直接 rate_limited = m_ang_hall，完美跟上
 			motor->m_ang_hall_rate_limited = motor->m_ang_hall;
-		} else {
+		} else {	// 发生突变，此时 rate_limited 拒绝瞬间跳过去，而是每一步只朝着目标方向 SIGN(angle_diff) 移动 angle_step 的距离
 			motor->m_ang_hall_rate_limited += angle_step * SIGN(angle_diff);
-		}
+		}	// 以上这段是保证原来F103在极低或转子过零发生80-150us左右霍尔跳变干扰的过滤的重点机制！！
 
 		utils_norm_angle_rad((float*)&motor->m_ang_hall_rate_limited);
 
 		if (motor->m_using_hall) {
 			angle = motor->m_ang_hall_rate_limited;
 		}
-	} else {
+	} else {	// 霍尔是无效状态，比如霍尔断线
 		// Invalid hall reading. Don't update angle.
 		motor->m_ang_hall_int_prev = -1;
 
@@ -686,7 +686,7 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 
 	// Map output angle between hall angle and observer angle in transition region to make
 	// a smooth transition.
-	if (angle_old != angle) {
+	if (angle_old != angle) {	// 观测器角度与霍尔角度不一致
 		float weight_hall = utils_map(rpm_abs, conf_now->foc_sl_erpm_start, conf_now->foc_sl_erpm, 1.0, 0.0);
 		utils_truncate_number(&weight_hall, 0.0, 1.0);
 		angle = utils_interpolate_angles_rad(angle, angle_old, weight_hall);
@@ -695,7 +695,7 @@ float foc_correct_hall(float angle, float dt, motor_all_state_t *motor, int hall
 	return angle;
 }
 
-void foc_run_fw(motor_all_state_t *motor, float dt) {
+void foc_run_fw(motor_all_state_t *motor, float dt) {	// 弱磁计算
 	if (motor->m_conf->foc_fw_current_max < fmaxf(motor->m_conf->cc_min_current, 0.001)) {
 		return;
 	}
