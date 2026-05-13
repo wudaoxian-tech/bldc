@@ -3388,7 +3388,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 				motor_now->m_motor_state.phase = motor_now->m_phase_now_override;
 			}
 
-			utils_fast_sincos_better(motor_now->m_motor_state.phase,
+			utils_fast_sincos_better(motor_now->m_motor_state.phase,	// 根据角度计算正余弦值
 					(float*)&motor_now->m_motor_state.phase_sin,
 					(float*)&motor_now->m_motor_state.phase_cos);
 		}
@@ -3582,15 +3582,15 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 	// Run PLL for speed estimation
 	foc_pll_run(phase_for_speed_est, dt, &motor_now->m_pll_phase, &motor_now->m_pll_speed, conf_now);
 
-	// Low latency speed estimation, for e.g. HFI and speed control.
-	{
+	// Low latency speed estimation, for e.g. HFI and speed control.低延迟转速估算
+	{	// 现在的角度减去上一拍的角度
 		float diff = utils_angle_difference_rad(phase_for_speed_est, motor_now->m_phase_before_speed_est);
 		utils_truncate_number(&diff, -M_PI / 3.0, M_PI / 3.0);
 
-		UTILS_LP_FAST(motor_now->m_speed_est_fast, diff / dt, 0.01);
+		UTILS_LP_FAST(motor_now->m_speed_est_fast, diff / dt, 0.01);	// 求导，较重滤波
 		UTILS_NAN_ZERO(motor_now->m_speed_est_fast);
 
-		UTILS_LP_FAST(motor_now->m_speed_est_faster, diff / dt, 0.2);
+		UTILS_LP_FAST(motor_now->m_speed_est_faster, diff / dt, 0.2);	// 求导，较轻滤波
 		UTILS_NAN_ZERO(motor_now->m_speed_est_faster);
 
 		float diff_corr = utils_angle_difference_rad(motor_now->m_motor_state.phase, motor_now->m_phase_before_speed_est_corrected);
@@ -3599,18 +3599,18 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		UTILS_LP_FAST(motor_now->m_speed_est_fast_corrected, diff_corr / dt, 0.01);
 		UTILS_NAN_ZERO(motor_now->m_speed_est_fast_corrected);
 
-		// pll wind-up protection
+		// pll wind-up protection， PLL 的防积分饱和
 		utils_truncate_number_abs((float*)&motor_now->m_pll_speed, fabsf(motor_now->m_speed_est_fast) * 3.0);
 
 		motor_now->m_phase_before_speed_est = phase_for_speed_est;
 		motor_now->m_phase_before_speed_est_corrected = motor_now->m_motor_state.phase;
 	}
 
-	// Update tachometer (resolution = 60 deg as for BLDC)
+	// Update tachometer (resolution = 60 deg as for BLDC)，更新虚拟计步器 / 里程表
 	float ph_tmp = motor_now->m_motor_state.phase;
 	utils_norm_angle_rad(&ph_tmp);
-	int step = (int)floorf((ph_tmp + M_PI) / (2.0 * M_PI) * 6.0);
-	utils_truncate_number_int(&step, 0, 5);
+	int step = (int)floorf((ph_tmp + M_PI) / (2.0 * M_PI) * 6.0);	// -π ~ π 映射到整数 0 ~ 5
+	utils_truncate_number_int(&step, 0, 5);	
 	int diff = step - motor_now->m_tacho_step_last;
 	motor_now->m_tacho_step_last = step;
 
@@ -3620,8 +3620,8 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		diff += 6;
 	}
 
-	motor_now->m_tachometer += diff;
-	motor_now->m_tachometer_abs += abs(diff);
+	motor_now->m_tachometer += diff;				// 相对步数，带符号：正转加，反转减
+	motor_now->m_tachometer_abs += abs(diff);		// 绝对步数：绝对值累加
 
 	// Track position control angle
 	float angle_now = 0.0;
