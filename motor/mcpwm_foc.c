@@ -2905,7 +2905,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 	float dt = 1.0 / (conf_now->foc_f_zv / 2.0);
 #endif
 
-	if (conf_other->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7_INTERPOL && !skip_interpolation) {
+	if (conf_other->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7_INTERPOL && !skip_interpolation) { // V0_V7_INTERPOL
 		float interpolated_phase = motor_other->m_motor_state.phase + motor_other->m_speed_est_fast * dt * 0.5;
 		utils_norm_angle_rad(&interpolated_phase);
 
@@ -2920,8 +2920,8 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 		uint32_t duty1, duty2, duty3, top;
 		top = TIM1->ARR;
-		foc_svm(state_m->mod_alpha_raw, state_m->mod_beta_raw,
-				top, &duty1, &duty2, &duty3, (uint32_t*)&state_m->svm_sector);
+		foc_svm(state_m->mod_alpha_raw, state_m->mod_beta_raw,	//  插值计算相位，得出 mod_alpha_raw, mod_beta_raw，更新占空比发波
+				top, &duty1, &duty2, &duty3, (uint32_t*)&state_m->svm_sector);	// V0_V7_INTERPOL 更新
 
 #ifdef HW_HAS_DUAL_MOTORS
 		if (is_second_motor) {
@@ -3116,7 +3116,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		motor_now->m_phase_now_encoder = DEG2RAD_f(phase_tmp);
 	}
 
-	if (motor_now->m_state == MC_STATE_RUNNING) {
+	if (motor_now->m_state == MC_STATE_RUNNING) {	// RUNNING状态
 		if (conf_now->foc_current_sample_mode == FOC_CURRENT_SAMPLE_MODE_ALL_SENSORS) {
 			// Full Clarke Transform
 			motor_now->m_motor_state.i_alpha = (2.0 / 3.0) * ia - (1.0 / 3.0) * ib - (1.0 / 3.0) * ic;
@@ -3563,7 +3563,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		UTILS_NAN_ZERO(motor_now->m_motor_state.mod_q_filter);
 		UTILS_LP_FAST(motor_now->m_motor_state.mod_q_filter, motor_now->m_motor_state.mod_q, 0.2);
 		utils_truncate_number_abs((float*)&motor_now->m_motor_state.mod_q_filter, 1.0);
-	}
+	}	// 非RUNNING状态的结尾
 
 	// Calculate duty cycle，就是SVPWM输出的有效时间占比（非零矢量的时间占比）
 	motor_now->m_motor_state.duty_now = SIGN(motor_now->m_motor_state.vq) *
@@ -4653,12 +4653,12 @@ static void control_current(motor_all_state_t *motor, float dt) {
 			// Delay adding the HFI voltage when not sampling in both 0 vectors, as it will cancel
 			// itself with the opposite pulse from the previous HFI sample. This makes more sense
 			// when drawing the SVM waveform.
-			foc_svm(mod_alpha_v7, mod_beta_v7, TIM1->ARR,
+			foc_svm(mod_alpha_v7, mod_beta_v7, TIM1->ARR,	// 准备下一次HFI所需的占空比
 				(uint32_t*)&motor->m_duty1_next,
 				(uint32_t*)&motor->m_duty2_next,
 				(uint32_t*)&motor->m_duty3_next,
 				(uint32_t*)&state_m->svm_sector); //svm_sector already gettings written here. Seems incorrect since it will only be used in the next update, but svm_sector seems unused so no issue.
-			motor->m_duty_next_set = true;
+			motor->m_duty_next_set = true;	// 等下一次进入中断的最开头（即代码最上方的 if (motor_other->m_duty_next_set) 分支），瞬间砸给底层寄存器
 		}
 	} else {
 #ifdef HW_HAS_DUAL_MOTORS
@@ -4683,7 +4683,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 	// Calculate the duty cycles for all the phases. This also injects a zero modulation signal to
 	// be able to fully utilize the bus voltage. See https://microchipdeveloper.com/mct5001:start
-	foc_svm(state_m->mod_alpha_raw, state_m->mod_beta_raw, top, &duty1, &duty2, &duty3, (uint32_t*)&state_m->svm_sector);
+	foc_svm(state_m->mod_alpha_raw, state_m->mod_beta_raw, top, &duty1, &duty2, &duty3, (uint32_t*)&state_m->svm_sector);	//  FOC 控制的正常执行主干，更新CCR用于发波
 
 	if (motor == &m_motor_1) {
 		TIMER_UPDATE_DUTY_M1(duty1, duty2, duty3);
