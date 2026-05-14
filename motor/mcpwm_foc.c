@@ -3679,8 +3679,8 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 	// Calculate temperature-compensated parameters here
 	if (mc_interface_temp_motor_filtered() > -30.0) {
 		float comp_fact = 1.0 + 0.00386 * (mc_interface_temp_motor_filtered() - conf_now->foc_temp_comp_base_temp);
-		motor->m_res_temp_comp = conf_now->foc_motor_r * comp_fact;
-		motor->m_current_ki_temp_comp = conf_now->foc_current_ki * comp_fact;
+		motor->m_res_temp_comp = conf_now->foc_motor_r * comp_fact;				// 根据温度，调整电阻值
+		motor->m_current_ki_temp_comp = conf_now->foc_current_ki * comp_fact;	// 电流环Ki做温度补偿
 	} else {
 		motor->m_res_temp_comp = conf_now->foc_motor_r;
 		motor->m_current_ki_temp_comp = conf_now->foc_current_ki;
@@ -4301,13 +4301,13 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 	float d_gain_scale = 1.0;
 	if (conf_now->foc_d_gain_scale_start < 0.99) {
-		float max_mod_norm = fabsf(state_m->duty_now / max_duty);
+		float max_mod_norm = fabsf(state_m->duty_now / max_duty);	// 当前占空比与允许的最大占空比的比值
 		if (max_duty < 0.01) {
 			max_mod_norm = 1.0;
 		}
 		if (max_mod_norm > conf_now->foc_d_gain_scale_start) {
 			d_gain_scale = utils_map(max_mod_norm, conf_now->foc_d_gain_scale_start, 1.0,
-					1.0, conf_now->foc_d_gain_scale_max_mod);
+					1.0, conf_now->foc_d_gain_scale_max_mod);			// 占空比比值越逼近 100%，d_gain_scale 就会从 1.0 线性下降到一个很小的值（比如 0.2）
 			if (d_gain_scale < conf_now->foc_d_gain_scale_max_mod) {
 				d_gain_scale = conf_now->foc_d_gain_scale_max_mod;
 			}
@@ -4319,7 +4319,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 	float ki = conf_now->foc_current_ki;
 	if (conf_now->foc_temp_comp) {
-		ki = motor->m_current_ki_temp_comp;
+		ki = motor->m_current_ki_temp_comp;	// 基于电机温度做Ki的温度补偿
 	}
 
 	state_m->vd_int += Ierr_d * (ki * d_gain_scale * dt);
@@ -4338,7 +4338,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 	float dec_vq = 0.0;
 	float dec_bemf = 0.0;
 
-	if (motor->m_control_mode < CONTROL_MODE_HANDBRAKE && conf_now->foc_cc_decoupling != FOC_CC_DECOUPLING_DISABLED) {
+	if (motor->m_control_mode < CONTROL_MODE_HANDBRAKE && conf_now->foc_cc_decoupling != FOC_CC_DECOUPLING_DISABLED) {	// 闭环且有正确的速度反馈才解耦
 		switch (conf_now->foc_cc_decoupling) {
 		case FOC_CC_DECOUPLING_CROSS:
 			dec_vd = state_m->iq_filter * motor->m_speed_est_fast * motor->p_lq; // m_speed_est_fast is ωe in [rad/s]
