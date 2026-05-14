@@ -3671,7 +3671,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 // Private functions
 
-static void timer_update(motor_all_state_t *motor, float dt) {
+static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程里执行
 	foc_run_fw(motor, dt);
 
 	const mc_configuration *conf_now = motor->m_conf;
@@ -3687,10 +3687,10 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 	}
 
 	// Check if it is time to stop the modulation. Notice that modulation is kept on as long as there is
-	// field weakening current.
+	// field weakening current.	用户已经松开油门（没有电流需求），且电机不需要维持任何磁场时，关闭底层 PWM 发波
 	utils_sys_lock_cnt();
 	utils_step_towards((float*)&motor->m_current_off_delay, 0.0, dt);
-	if (!motor->m_phase_override && motor->m_state == MC_STATE_RUNNING &&
+	if (!motor->m_phase_override && motor->m_state == MC_STATE_RUNNING &&	// 不在强拖模式下
 			(motor->m_control_mode == CONTROL_MODE_CURRENT ||
 					motor->m_control_mode == CONTROL_MODE_CURRENT_BRAKE ||
 					motor->m_control_mode == CONTROL_MODE_HANDBRAKE ||
@@ -3703,13 +3703,13 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 			min_current = 0.001;
 		}
 
-		if (fabsf(motor->m_iq_set) < min_current &&
+		if (fabsf(motor->m_iq_set) < min_current &&	// 四重“零电流”检查
 				fabsf(motor->m_id_set) < min_current &&
 				motor->m_i_fw_set < min_current &&
 				motor->m_current_off_delay < dt) {
 			motor->m_control_mode = CONTROL_MODE_NONE;
 			motor->m_state = MC_STATE_OFF;
-			stop_pwm_hw(motor);
+			stop_pwm_hw(motor);	// 封波
 		}
 	}
 	utils_sys_unlock_cnt();
@@ -3777,17 +3777,17 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 	}
 #endif
 
-	float t_lock = conf_now->foc_sl_openloop_time_lock;
-	float t_ramp = conf_now->foc_sl_openloop_time_ramp;
-	float t_const = conf_now->foc_sl_openloop_time;
+	float t_lock = conf_now->foc_sl_openloop_time_lock;	// 注入直流电，转速为 0，强行把转子吸到一个已知的固定角度（对齐）
+	float t_ramp = conf_now->foc_sl_openloop_time_ramp;	// 旋转磁场开始慢慢加速，就像踩离合器半联动一样，把转子柔和地拽起来
+	float t_const = conf_now->foc_sl_openloop_time;		// 保持最高强拖速度匀速旋转，让反电动势稳定下来，等待观测器介入
 
-	float openloop_current = fabsf(motor->m_motor_state.iq_filter);
-	openloop_current += conf_now->foc_sl_openloop_boost_q;
+	float openloop_current = fabsf(motor->m_motor_state.iq_filter);	// 系统获取当前真实的滤波扭矩电流 iq_filter 的绝对值
+	openloop_current += conf_now->foc_sl_openloop_boost_q;			// 配置的 Boost 电流
 	if (conf_now->foc_sl_openloop_max_q > 0.0) {
-		utils_truncate_number(&openloop_current, 0.0, conf_now->foc_sl_openloop_max_q);
+		utils_truncate_number(&openloop_current, 0.0, conf_now->foc_sl_openloop_max_q);	// 限幅
 	}
 
-	float openloop_rpm_max = utils_map(openloop_current,
+	float openloop_rpm_max = utils_map(openloop_current,	// 强拖需要达到的最高转速，是根据负载大小（电流）动态变化
 			0.0, conf_now->l_current_max,
 			conf_now->foc_openloop_rpm_low * conf_now->foc_openloop_rpm,
 			conf_now->foc_openloop_rpm);
@@ -3795,49 +3795,49 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 	utils_truncate_number_abs(&openloop_rpm_max, conf_now->foc_openloop_rpm);
 
 	float openloop_rpm = openloop_rpm_max;
-	if (conf_now->foc_sensor_mode != FOC_SENSOR_MODE_ENCODER) {
-		float time_fwd = t_lock + t_ramp + t_const - motor->m_min_rpm_timer;
+	if (conf_now->foc_sensor_mode != FOC_SENSOR_MODE_ENCODER) {					// m_min_rpm_timer 是一个倒计时器。当起步触发时，它被设为三大阶段的总时长。
+		float time_fwd = t_lock + t_ramp + t_const - motor->m_min_rpm_timer;	// 总时间 - 剩余时间 = 已经流逝的时间 (time_fwd)
 		if (time_fwd < t_lock) {
-			openloop_rpm = 0.0;
+			openloop_rpm = 0.0;								// 阶段1：锁定阶段，转速为0
 		} else if (time_fwd < (t_lock + t_ramp)) {
 			openloop_rpm = utils_map(time_fwd, t_lock,
-					t_lock + t_ramp, 0.0, openloop_rpm);
-		}
+					t_lock + t_ramp, 0.0, openloop_rpm);	// 阶段2：加速阶段，转速从0线性增加到 openloop_rpm_max
+		}													// 如果超出了加速时间，就是阶段3（匀速阶段），保持 openloop_rpm 不变
 	}
 
 	utils_truncate_number_abs(&openloop_rpm, openloop_rpm_max);
 
 	float add_min_speed = 0.0;
-	if (motor->m_motor_state.duty_now > 0.0) {
+	if (motor->m_motor_state.duty_now > 0.0) {	// RPM 转化为电角度增量
 		add_min_speed = RPM2RADPS_f(openloop_rpm) * dt;
 	} else {
 		add_min_speed = -RPM2RADPS_f(openloop_rpm) * dt;
 	}
 
 	// Open loop encoder angle for when the index is not found
-	motor->m_phase_now_encoder_no_index += add_min_speed;
+	motor->m_phase_now_encoder_no_index += add_min_speed;		// 提供假角度
 	utils_norm_angle_rad((float*)&motor->m_phase_now_encoder_no_index);
 
 	if (fabsf(motor->m_pll_speed) < RPM2RADPS_f(openloop_rpm_max) &&
 			motor->m_min_rpm_hyst_timer < conf_now->foc_sl_openloop_hyst) {
-		motor->m_min_rpm_hyst_timer += dt;
+		motor->m_min_rpm_hyst_timer += dt;				// 如果速度低于阈值，累加异常时间
 	} else if (motor->m_min_rpm_hyst_timer > 0.0) {
-		motor->m_min_rpm_hyst_timer -= dt;
+		motor->m_min_rpm_hyst_timer -= dt;				// 速度恢复，递减异常时间
 	}
 
 	// Don't use this in brake mode.
-	if (motor->m_control_mode == CONTROL_MODE_CURRENT_BRAKE ||
-			(motor->m_state == MC_STATE_RUNNING && fabsf(motor->m_motor_state.duty_now) < 0.001)) {
+	if (motor->m_control_mode == CONTROL_MODE_CURRENT_BRAKE ||	// 刹车的目的是让电机停下，故不要强拖
+			(motor->m_state == MC_STATE_RUNNING && fabsf(motor->m_motor_state.duty_now) < 0.001)) {	// 系统在“运行”，但没拧油门，电机在自由滑行（且马上就要停了）。此时也没必要强拖
 		motor->m_min_rpm_hyst_timer = 0.0;
 		motor->m_min_rpm_timer = 0.0;
 		motor->m_phase_observer_override = false;
 	}
 
-	bool started_now = false;
-	if (motor->m_min_rpm_hyst_timer >= conf_now->foc_sl_openloop_hyst &&
-			motor->m_min_rpm_timer <= 0.0001) {
-		motor->m_min_rpm_timer = t_lock + t_ramp + t_const;
-		started_now = true;
+	bool started_now = false;	//	判定是否需要（重新）启动强拖流程
+	if (motor->m_min_rpm_hyst_timer >= conf_now->foc_sl_openloop_hyst &&	// 转速低于安全阈值的时间超过了容忍值
+			motor->m_min_rpm_timer <= 0.0001) {								// 当前并没有在进行强拖（m_min_rpm_timer 是 0）,说明电机确实起步了但没转起来，或者是遇到障碍物被憋停了（失步卡死）
+		motor->m_min_rpm_timer = t_lock + t_ramp + t_const;					// 强拖倒计时器 m_min_rpm_timer 充满
+		started_now = true;													// 强拖激活
 	}
 
 	if (motor->m_state != MC_STATE_RUNNING) {
@@ -3845,31 +3845,31 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 	}
 
 	if (motor->m_min_rpm_timer > 0.0) {
-		motor->m_phase_now_observer_override += add_min_speed;
+		motor->m_phase_now_observer_override += add_min_speed;	// 每一拍都把算好的匀速步进角度 add_min_speed 累加到假角度变量 m_phase_now_observer_override 上，造出一个旋转的定子磁场
 
 		// When the motor gets stuck it tends to be 90 degrees off, so start the open loop
 		// sequence by correcting with 60 degrees.
 		if (started_now) {
 			if (motor->m_motor_state.duty_now > 0.0) {
-				motor->m_phase_now_observer_override += M_PI / 3.0;
+				motor->m_phase_now_observer_override += M_PI / 3.0;	// 在触发强拖的第一拍（if (started_now)），瞬间将强拖磁场的角度向前（或向后）猛跳 60 度
 			} else {
 				motor->m_phase_now_observer_override -= M_PI / 3.0;
 			}
 		}
 
-		utils_norm_angle_rad((float*)&motor->m_phase_now_observer_override);
-		motor->m_phase_observer_override = true;
-		motor->m_min_rpm_timer -= dt;
+		utils_norm_angle_rad((float*)&motor->m_phase_now_observer_override);	// 将假角度规范化到 −π 到 π
+		motor->m_phase_observer_override = true;	// 置位 override = true（告诉底层发波函数，别用观测器了，用现在的假角度）
+		motor->m_min_rpm_timer -= dt;				// 倒计时器递减
 		motor->m_min_rpm_hyst_timer = 0.0;
 
 		// Set observer state to help it start tracking when leaving open loop.
-		float s, c;
-		utils_fast_sincos_better(motor->m_phase_now_observer_override + SIGN(motor->m_motor_state.duty_now) * M_PI / 4.0, &s, &c);
+		float s, c;		// 在重载开环强拖时，转子通常会滞后定子磁场一个角度。加 45 度是一个非常贴合实际的经验值
+		utils_fast_sincos_better(motor->m_phase_now_observer_override + SIGN(motor->m_motor_state.duty_now) * M_PI / 4.0, &s, &c);	
 		motor->m_observer_x1_override = c * conf_now->foc_motor_flux_linkage;
 		motor->m_observer_x2_override = s * conf_now->foc_motor_flux_linkage;
-	} else {
+	} else {	// 倒计时结束（m_min_rpm_timer <= 0.0）
 		motor->m_phase_now_observer_override = motor->m_phase_now_observer;
-		motor->m_phase_observer_override = false;
+		motor->m_phase_observer_override = false;	// 强拖接管（m_phase_observer_override = false），底层发波重新使用真实的观测器角度
 	}
 
 	// Samples
@@ -4365,26 +4365,26 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 	// Calculate the max length of the voltage space vector without overmodulation.
 	// Is simply 1/sqrt(3) * v_bus. See https://microchipdeveloper.com/mct5001:start. Adds margin with max_duty.
-	float max_v_mag = ONE_BY_SQRT3 * max_duty * state_m->v_bus;
+	float max_v_mag = ONE_BY_SQRT3 * max_duty * state_m->v_bus;	// 逆变器能发出的最大相电压矢量模长
 
 	// Saturation and anti-windup. Notice that the d-axis has priority as it controls field
 	// weakening and the efficiency.
-	float vd_presat = state_m->vd;
-	utils_truncate_number_abs((float*)&state_m->vd, max_v_mag);
-	state_m->vd_int += (state_m->vd - vd_presat);
+	float vd_presat = state_m->vd;	// 积分抗饱和
+	utils_truncate_number_abs((float*)&state_m->vd, max_v_mag);	// D轴优先
+	state_m->vd_int += (state_m->vd - vd_presat);	// vd 被强行切断（限幅）的差值反馈到积分器
 
-	float max_vq = sqrtf(SQ(max_v_mag) - SQ(state_m->vd));
+	float max_vq = sqrtf(SQ(max_v_mag) - SQ(state_m->vd));	// 剩余电压给Q轴
 	float vq_presat = state_m->vq;
 	utils_truncate_number_abs((float*)&state_m->vq, max_vq);
-	state_m->vq_int += (state_m->vq - vq_presat);
+	state_m->vq_int += (state_m->vq - vq_presat);	// vq 被强行切断（限幅）的差值反馈到积分器
 
-	utils_saturate_vector_2d((float*)&state_m->vd, (float*)&state_m->vq, max_v_mag);
+	utils_saturate_vector_2d((float*)&state_m->vd, (float*)&state_m->vq, max_v_mag);	// 防止浮点计算精度导致总矢量溢出圆外
 
 	// mod_d and mod_q are normalized such that 1 corresponds to the max possible voltage:
 	//    voltage_normalize = 1/(2/3*V_bus)
 	// This includes overmodulation and therefore cannot be made in any direction.
 	// Note that this scaling is different from max_v_mag, which is without over modulation.
-	const float voltage_normalize = 1.5 / state_m->v_bus;
+	const float voltage_normalize = 1.5 / state_m->v_bus;	// 物理电压归一化为占空比调制系数
 	state_m->mod_d = state_m->vd * voltage_normalize;
 	state_m->mod_q = state_m->vq * voltage_normalize;
 	UTILS_NAN_ZERO(state_m->mod_q_filter);
@@ -4394,7 +4394,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 #ifdef HW_HAS_INPUT_CURRENT_SENSOR
 	state_m->i_bus = GET_INPUT_CURRENT();
 #else
-	state_m->i_bus = state_m->mod_alpha_measured * state_m->i_alpha + state_m->mod_beta_measured * state_m->i_beta;
+	state_m->i_bus = state_m->mod_alpha_measured * state_m->i_alpha + state_m->mod_beta_measured * state_m->i_beta;	// 基于归一化为占空比调制系数的物理约等式
 	// TODO: Also calculate motor power based on v_alpha, v_beta, i_alpha and i_beta. This is much more accurate
 	// with phase filters than using the modulation and bus current.
 #endif
@@ -4402,13 +4402,13 @@ static void control_current(motor_all_state_t *motor, float dt) {
 	state_m->i_abs_filter = NORM2_f(state_m->id_filter, state_m->iq_filter);
 
 	// Inverse Park transform: transforms the (normalized) voltages from the rotor reference frame to the stator frame
-	state_m->mod_alpha_raw = c * state_m->mod_d - s * state_m->mod_q;
+	state_m->mod_alpha_raw = c * state_m->mod_d - s * state_m->mod_q;	// 反 Park 变换
 	state_m->mod_beta_raw  = c * state_m->mod_q + s * state_m->mod_d;
 
-	update_valpha_vbeta(motor, state_m->mod_alpha_raw, state_m->mod_beta_raw);
+	update_valpha_vbeta(motor, state_m->mod_alpha_raw, state_m->mod_beta_raw);	// 根据电流极性补偿死区时间
 
 	// Dead time compensated values for vd and vq. Note that these are not used to control the switching times.
-	state_m->vd = c * motor->m_motor_state.v_alpha + s * motor->m_motor_state.v_beta;
+	state_m->vd = c * motor->m_motor_state.v_alpha + s * motor->m_motor_state.v_beta;	// 用于观测器
 	state_m->vq = c * motor->m_motor_state.v_beta  - s * motor->m_motor_state.v_alpha;
 
 	mc_audio_state *audio = &motor->m_audio;
