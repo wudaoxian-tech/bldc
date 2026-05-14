@@ -231,8 +231,10 @@ void foc_pll_run(float phase, float dt, float *phase_var,
 	utils_norm_angle_rad((float*)phase_var);
 	*speed_var += conf->foc_pll_ki * delta_theta * dt;
 }
-// FOC循环里的占空比定义：SIGN(...) * NORM2_f(mod_d, mod_q) * TWO_BY_SQRT3，线性区半径的最大值是+/- sqrt(3)/2 * 2/sqrt(3) = +/-1
+
+// 电压归一化的公式是：const float voltage_normalize = 1.5 / state_m->v_bus; 这表示，把逆变器能输出的六个基本非零电压矢量的模长定义为 1.0
 /** Magnitude：边长为 1 的正六边形，其内切圆半径就是cos(30∘) = sqrt(3)/2 = 0.866，也就是sqrt(alpha^2 + beta^2) > 0.866，合成矢量就会超出内切圆过调制。
+ * FOC循环里的占空比定义：SIGN(...) * NORM2_f(mod_d, mod_q) * TWO_BY_SQRT3，线性区半径的最大值是+/- sqrt(3)/2 * 2/sqrt(3) = +/-1
  * @brief svm Space vector modulation. Magnitude must not be larger than sqrt(3)/2, or 0.866 to avoid overmodulation.
  *        See https://github.com/vedderb/bldc/pull/372#issuecomment-962499623 for a full description.
  * @param alpha voltage
