@@ -2906,7 +2906,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 #endif
 
 	if (conf_other->foc_control_sample_mode == FOC_CONTROL_SAMPLE_MODE_V0_V7_INTERPOL && !skip_interpolation) { // V0_V7_INTERPOL
-		float interpolated_phase = motor_other->m_motor_state.phase + motor_other->m_speed_est_fast * dt * 0.5;
+		float interpolated_phase = motor_other->m_motor_state.phase + motor_other->m_speed_est_fast * dt * 0.5;	// 插值计算相位，得出 mod_alpha_raw, mod_beta_raw
 		utils_norm_angle_rad(&interpolated_phase);
 
 		float s, c;
@@ -2920,7 +2920,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 		uint32_t duty1, duty2, duty3, top;
 		top = TIM1->ARR;
-		foc_svm(state_m->mod_alpha_raw, state_m->mod_beta_raw,	//  插值计算相位，得出 mod_alpha_raw, mod_beta_raw，更新占空比发波
+		foc_svm(state_m->mod_alpha_raw, state_m->mod_beta_raw,	//  跳过完整FOC计算，直接更新占空比发波；仅在V0采样和完整计算发波
 				top, &duty1, &duty2, &duty3, (uint32_t*)&state_m->svm_sector);	// V0_V7_INTERPOL 更新
 
 #ifdef HW_HAS_DUAL_MOTORS
@@ -3400,9 +3400,9 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 			float iq_ref = iq_set_tmp;
 			if (conf_now->foc_mtpa_mode == MTPA_MODE_IQ_MEASURED) {
-				iq_ref = utils_min_abs(iq_set_tmp, motor_now->m_motor_state.iq_filter);
+				iq_ref = utils_min_abs(iq_set_tmp, motor_now->m_motor_state.iq_filter);	// 处理动态瞬态响应（防突变）
 			}
-
+			// 用户下发的这个 iq_set_tmp 视为系统的总允许电流（即Is）
 			id_set_tmp = (lambda - sqrtf(SQ(lambda) + 8.0 * SQ(ld_lq_diff * iq_ref))) / (4.0 * ld_lq_diff);
 			iq_set_tmp = SIGN(iq_set_tmp) * sqrtf(SQ(iq_set_tmp) - SQ(id_set_tmp));
 		}
@@ -3410,28 +3410,28 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		const float mod_q = motor_now->m_motor_state.mod_q_filter;
 
 		// Running FW from the 1 khz timer seems fast enough.
-//		run_fw(motor_now, dt);
+//		run_fw(motor_now, dt);	// 把弱磁的执行放到1kHz的线程里
 		id_set_tmp -= motor_now->m_i_fw_set;
-		iq_set_tmp -= SIGN(mod_q) * motor_now->m_i_fw_set * conf_now->foc_fw_q_current_factor;
+		iq_set_tmp -= SIGN(mod_q) * motor_now->m_i_fw_set * conf_now->foc_fw_q_current_factor;	// 进入弱磁后，为了系统稳定或受限于某些电机的特性，需要主动降低输出扭矩
 
 		// Apply current limits
 		// TODO: Consider D axis current for the input current as well. Currently this is done using
 		// l_in_current_map_start in update_override_limits.
-		if (mod_q > 0.001) {
-			utils_truncate_number(&iq_set_tmp, conf_now->lo_in_current_min / mod_q, conf_now->lo_in_current_max / mod_q);
-		} else if (mod_q < -0.001) {
+		if (mod_q > 0.001) {	// 电池限流：lo_in_current_max 电池最大放电电流；lo_in_current_min 电池最大充电电流（通常是负数）
+			utils_truncate_number(&iq_set_tmp, conf_now->lo_in_current_min / mod_q, conf_now->lo_in_current_max / mod_q);	// Vbus​ × Ibus ​≈ Vq ​× Iq，mod_q是归一化电压，正比于Vq/Vbus
+		} else if (mod_q < -0.001) {																						// Ibus ≈ modq × Iq，Iq = Ibus / modq
 			utils_truncate_number(&iq_set_tmp, conf_now->lo_in_current_max / mod_q, conf_now->lo_in_current_min / mod_q);
 		}
 
-		if (mod_q > 0.0) {
+		if (mod_q > 0.0) {	// 相电流限流
 			utils_truncate_number(&iq_set_tmp, conf_now->lo_current_min, conf_now->lo_current_max);
 		} else {
 			utils_truncate_number(&iq_set_tmp, -conf_now->lo_current_max, -conf_now->lo_current_min);
 		}
 
 		float current_max_abs = fabsf(utils_max_abs(conf_now->lo_current_max, conf_now->lo_current_min));
-		utils_truncate_number_abs(&id_set_tmp, current_max_abs);
-		utils_truncate_number_abs(&iq_set_tmp, sqrtf(SQ(current_max_abs) - SQ(id_set_tmp)));
+		utils_truncate_number_abs(&id_set_tmp, current_max_abs);								// D轴拥有绝对最高优先级
+		utils_truncate_number_abs(&iq_set_tmp, sqrtf(SQ(current_max_abs) - SQ(id_set_tmp)));	// 剩余用于Q轴产生转矩
 
 		motor_now->m_motor_state.id_target = id_set_tmp;
 		motor_now->m_motor_state.iq_target = iq_set_tmp;
@@ -3580,7 +3580,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 	};
 
 	// Run PLL for speed estimation
-	foc_pll_run(phase_for_speed_est, dt, &motor_now->m_pll_phase, &motor_now->m_pll_speed, conf_now);
+	foc_pll_run(phase_for_speed_est, dt, &motor_now->m_pll_phase, &motor_now->m_pll_speed, conf_now);	// 获取转速信息用于速度环控制和解耦使用，PLL角度信息不参与发波
 
 	// Low latency speed estimation, for e.g. HFI and speed control.低延迟转速估算
 	{	// 现在的角度减去上一拍的角度
@@ -3911,7 +3911,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {
 	}
 }
 
-static void terminal_tmp(int argc, const char **argv) {
+static void terminal_tmp(int argc, const char **argv) {	// 500ms线程，对比“传感器测到的温度”和“电阻算出来的温度”，帮助工程师校验电机的热模型参数
 	(void)argc;
 	(void)argv;
 
@@ -3936,8 +3936,8 @@ static void terminal_tmp(int argc, const char **argv) {
 		float res_est = m_motor_1.m_res_est;
 		float t_base = m_motor_1.m_conf->foc_temp_comp_base_temp;
 		float res_base = m_motor_1.m_conf->foc_motor_r;
-		float t_est = (res_est / res_base - 1) / 0.00386 + t_base;
-		float t_meas = mc_interface_temp_motor_filtered();
+		float t_est = (res_est / res_base - 1) / 0.00386 + t_base;	// 模型的估算温度
+		float t_meas = mc_interface_temp_motor_filtered();			// 传感器的温度
 
 		if (top > 1) {
 			commands_plot_set_graph(0);
@@ -3954,7 +3954,7 @@ static void terminal_tmp(int argc, const char **argv) {
 		commands_printf("T: %.2f, T_EST: %.2f\n",
 				(double)t_meas, (double)t_est);
 
-		chThdSleepMilliseconds(500);
+		chThdSleepMilliseconds(500);	// 每500ms执行一次
 	}
 }
 
@@ -3974,13 +3974,13 @@ static void input_current_offset_measurement(void) {
 #endif
 }
 
-static THD_FUNCTION(timer_thread, arg) {
+static THD_FUNCTION(timer_thread, arg) {	// 定时器线程
 	(void)arg;
 
 	chRegSetThreadName("foc timer");
 
 	for(;;) {
-		const float dt = 0.001;
+		const float dt = 0.001;	// // 1毫秒
 
 		if (timer_thd_stop) {
 			timer_thd_stop = false;
@@ -3994,11 +3994,11 @@ static THD_FUNCTION(timer_thread, arg) {
 
 		input_current_offset_measurement();
 
-		chThdSleepMilliseconds(1);
+		chThdSleepMilliseconds(1);	// 执行完线程，休息1ms，所以线程不会是严格的1kHz（Ttotal} = Texec + 1ms），Texec线程代码的执行时间（还有可能被插入中断）
 	}
 }
 
-static void hfi_update(volatile motor_all_state_t *motor, float dt) {
+static void hfi_update(volatile motor_all_state_t *motor, float dt) {	// 在500us的线程里执行
 	(void)dt;
 	float rpm_abs = fabsf(RADPS2RPM_f(motor->m_speed_est_fast));
 
@@ -4157,7 +4157,7 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {
 	}
 }
 
-static THD_FUNCTION(hfi_thread, arg) {
+static THD_FUNCTION(hfi_thread, arg) {	// HFI线程
 	(void)arg;
 
 	chRegSetThreadName("foc hfi");
@@ -4178,7 +4178,7 @@ static THD_FUNCTION(hfi_thread, arg) {
 		hfi_update(&m_motor_2, dt);
 #endif
 
-		chThdSleepMicroseconds(500);
+		chThdSleepMicroseconds(500);	// 大概500us执行一次（非严格的500us）
 	}
 }
 
@@ -4195,7 +4195,7 @@ static THD_FUNCTION(pid_thread, arg) {
 			return;
 		}
 
-		switch (m_motor_1.m_conf->sp_pid_loop_rate) {
+		switch (m_motor_1.m_conf->sp_pid_loop_rate) {	// 线程频率配置
 		case PID_RATE_25_HZ: chThdSleepMicroseconds(1000000 / 25); break;
 		case PID_RATE_50_HZ: chThdSleepMicroseconds(1000000 / 50); break;
 		case PID_RATE_100_HZ: chThdSleepMicroseconds(1000000 / 100); break;
@@ -4265,7 +4265,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 
 	float abs_rpm = fabsf(RADPS2RPM_f(motor->m_speed_est_fast));
 
-	bool do_hfi = (conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI ||
+	bool do_hfi = (conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI ||	// 执行 HFI标志位 
 			conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V2 ||
 			conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V3 ||
 			conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V4 ||
@@ -4273,20 +4273,20 @@ static void control_current(motor_all_state_t *motor, float dt) {
 			(conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_START &&
 					motor->m_control_mode != CONTROL_MODE_CURRENT_BRAKE &&
 					fabsf(state_m->iq_target) > conf_now->cc_min_current)) &&
-							!motor->m_phase_override &&
-							abs_rpm < (conf_now->foc_sl_erpm_hfi * (motor->m_cc_was_hfi ? 1.8 : 1.5));
-
-	bool hfi_est_done = motor->m_hfi.est_done_cnt >= conf_now->foc_hfi_start_samples;
+							!motor->m_phase_override &&								// 不能处于强拖模式
+							abs_rpm < (conf_now->foc_sl_erpm_hfi * (motor->m_cc_was_hfi ? 1.8 : 1.5));	// 滞回比较器
+							// 上一拍 HFI 是开启的（m_cc_was_hfi 为真），转速必须超过设定值的 1.8倍才会退出 HFI；上一拍 HFI 是关闭的（电机正在减速），转速必须跌破设定值的 1.5倍，才会重新开启 HFI
+	bool hfi_est_done = motor->m_hfi.est_done_cnt >= conf_now->foc_hfi_start_samples;	// 磁极极性辨识完成
 
 	// Only allow Q axis current after the HFI ambiguity is resolved. This causes
 	// a short delay when starting.
 	if (do_hfi && !hfi_est_done) {
-		state_m->iq_target = 0;
+		state_m->iq_target = 0;		// 需要做 HFI，且磁极极性还没辨识完，强行将用户的 Q轴目标电流清零
 	} else if (conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_START) {
-		do_hfi = false;
+		do_hfi = false;				// HFI_START 模式，磁极极性探测已经完成，把 do_hfi 关掉
 	}
 
-	motor->m_cc_was_hfi = do_hfi;
+	motor->m_cc_was_hfi = do_hfi;	// 当前的 HFI 状态保存到 m_cc_was_hfi
 
 	float max_duty = fabsf(state_m->max_duty);
 	utils_truncate_number(&max_duty, 0.0, conf_now->l_max_duty);
