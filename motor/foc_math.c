@@ -231,8 +231,8 @@ void foc_pll_run(float phase, float dt, float *phase_var,
 	utils_norm_angle_rad((float*)phase_var);
 	*speed_var += conf->foc_pll_ki * delta_theta * dt;
 }
-
-/**
+// FOC循环里的占空比定义：SIGN(...) * NORM2_f(mod_d, mod_q) * TWO_BY_SQRT3，线性区半径的最大值是+/- sqrt(3)/2 * 2/sqrt(3) = +/-1
+/** Magnitude：边长为 1 的正六边形，其内切圆半径就是cos(30∘) = sqrt(3)/2 = 0.866，也就是sqrt(alpha^2 + beta^2) > 0.866，合成矢量就会超出内切圆过调制。
  * @brief svm Space vector modulation. Magnitude must not be larger than sqrt(3)/2, or 0.866 to avoid overmodulation.
  *        See https://github.com/vedderb/bldc/pull/372#issuecomment-962499623 for a full description.
  * @param alpha voltage
@@ -242,7 +242,7 @@ void foc_pll_run(float phase, float dt, float *phase_var,
  * @param tBout PWM duty cycle phase B
  * @param tCout PWM duty cycle phase C
  */
-// 转换成电机A/B/C 三相的PWM占空比数值，未有过调制处理
+// 转换成电机A/B/C 三相的PWM CCRx的数值，可直接发TIM更新；未有过调制处理
  void foc_svm(float alpha, float beta, uint32_t PWMFullDutyCycle,
 				uint32_t* tAout, uint32_t* tBout, uint32_t* tCout, uint32_t *svm_sector) {
 	uint32_t sector;
