@@ -743,7 +743,7 @@ bool conf_general_detect_motor_param(float current, float min_rpm, float low_dut
  * @return
  * True for success, false otherwise.
  */
-bool conf_general_measure_flux_linkage(float current, float duty,
+bool conf_general_measure_flux_linkage(float current, float duty,	//  BLDC（方波）模式测磁链
 		float min_erpm, float res, float *linkage) {
 
 	mc_configuration *mcconf = mempools_alloc_mcconf();
@@ -968,7 +968,7 @@ uint8_t conf_general_calculate_deadtime(float deadtime_ns, float core_clock_freq
  * @return
  * Fault code
  */
-int conf_general_measure_flux_linkage_openloop(float current, float duty, // 测量电机的磁链
+int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC测量电机的磁链
 		float erpm_per_sec, float res, float ind, float *linkage,
 		float *linkage_undriven, float *undriven_samples, bool *result) {
 

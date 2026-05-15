@@ -35,7 +35,7 @@ typedef enum {
    MC_STATE_OFF = 0,
    MC_STATE_DETECTING,
    MC_STATE_RUNNING,		// 发波
-   MC_STATE_FULL_BRAKE,
+   MC_STATE_FULL_BRAKE,		// 下桥臂 3 个 MOS 管全开，上桥臂全关，电机三相物理短路
 } mc_state;
 
 typedef enum {

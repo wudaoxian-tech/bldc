@@ -1861,7 +1861,7 @@ int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, fl
  *
  * @return
  * The fault code
- */
+ */	// 按固定的占空比（电压）打脉冲，测出电感
 int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld_lq_diff, float *inductance) {
 	volatile motor_all_state_t *motor = get_motor_now();
 	int fault = FAULT_CODE_NONE;
@@ -2034,7 +2034,7 @@ int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld
  *
  * @return
  * The fault code
- */
+ */ // 设定目标测试电流测试电感
 int mcpwm_foc_measure_inductance_current(float curr_goal, int samples, float *curr, float *ld_lq_diff, float *inductance) {
 	int fault = FAULT_CODE_NONE;
 	float duty_last = 0.0;
@@ -2253,7 +2253,7 @@ bool mcpwm_foc_play_audio_samples(const int8_t *samples, int num_samp, float f_s
  * @return
  * The fault code
  */
-int mcpwm_foc_measure_res_ind(float *res, float *ind, float *ld_lq_diff) {
+int mcpwm_foc_measure_res_ind(float *res, float *ind, float *ld_lq_diff) {	// 按顺序测电阻和测电感的动作连贯做完
 	volatile motor_all_state_t *motor = get_motor_now();
 	int fault = FAULT_CODE_NONE;
 
@@ -3837,7 +3837,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 	if (motor->m_min_rpm_hyst_timer >= conf_now->foc_sl_openloop_hyst &&	// 转速低于安全阈值的时间超过了容忍值
 			motor->m_min_rpm_timer <= 0.0001) {								// 当前并没有在进行强拖（m_min_rpm_timer 是 0）,说明电机确实起步了但没转起来，或者是遇到障碍物被憋停了（失步卡死）
 		motor->m_min_rpm_timer = t_lock + t_ramp + t_const;					// 强拖倒计时器 m_min_rpm_timer 充满
-		started_now = true;													// 强拖激活
+		started_now = true;													// started_now 只有在转速跌破阈值、滞回计时器超时才置位，代表被卡住
 	}
 
 	if (motor->m_state != MC_STATE_RUNNING) {
@@ -3851,7 +3851,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 		// sequence by correcting with 60 degrees.
 		if (started_now) {
 			if (motor->m_motor_state.duty_now > 0.0) {
-				motor->m_phase_now_observer_override += M_PI / 3.0;	// 在触发强拖的第一拍（if (started_now)），瞬间将强拖磁场的角度向前（或向后）猛跳 60 度
+				motor->m_phase_now_observer_override += M_PI / 3.0;	// 强拖的第一拍（if (started_now)），瞬间将强拖磁场的角度向前（或向后）猛跳 60 度
 			} else {
 				motor->m_phase_now_observer_override -= M_PI / 3.0;
 			}
@@ -3863,7 +3863,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 		motor->m_min_rpm_hyst_timer = 0.0;
 
 		// Set observer state to help it start tracking when leaving open loop.
-		float s, c;		// 在重载开环强拖时，转子通常会滞后定子磁场一个角度。加 45 度是一个非常贴合实际的经验值
+		float s, c;		// 在重载开环强拖时，转子通常会滞后定子磁场一个角度。转子初始位置猜在定子磁场后方 45 度，最大误差只有±45度
 		utils_fast_sincos_better(motor->m_phase_now_observer_override + SIGN(motor->m_motor_state.duty_now) * M_PI / 4.0, &s, &c);	
 		motor->m_observer_x1_override = c * conf_now->foc_motor_flux_linkage;
 		motor->m_observer_x2_override = s * conf_now->foc_motor_flux_linkage;
@@ -3873,7 +3873,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 	}
 
 	// Samples
-	if (motor->m_state == MC_STATE_RUNNING) {
+	if (motor->m_state == MC_STATE_RUNNING) {		// 运行数据的累加统计，上传上位机显示统计等
 		const volatile float vd_tmp = motor->m_motor_state.vd;
 		const volatile float vq_tmp = motor->m_motor_state.vq;
 		const volatile float id_tmp = motor->m_motor_state.id;
@@ -3885,7 +3885,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 	}
 
 	// Observer gain scaling, based on bus voltage and duty cycle
-	float gamma_tmp = utils_map(fabsf(motor->m_motor_state.duty_now),
+	float gamma_tmp = utils_map(fabsf(motor->m_motor_state.duty_now),	// 基于占空比（等效于转速）计算观测器增益
 								0.0, 40.0 / motor->m_motor_state.v_bus,
 								0, conf_now->foc_observer_gain);
 	if (gamma_tmp < (conf_now->foc_observer_gain_slow * conf_now->foc_observer_gain)) {
@@ -3898,7 +3898,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 	// Run resistance observer
 	// See "An adaptive flux observer for the permanent magnet synchronous motor"
 	// https://doi.org/10.1002/acs.2587
-	{
+	{									// 在线电阻辨识
 		float res_est_gain = 0.00002;
 		float i_abs_sq = SQ(motor->m_motor_state.i_abs);
 		motor->m_res_est = motor->m_r_est_state - 0.5 * res_est_gain * conf_now->foc_motor_l * i_abs_sq;
@@ -3906,7 +3906,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 				(motor->m_motor_state.i_beta * motor->m_observer_state.x1 - motor->m_motor_state.i_alpha * motor->m_observer_state.x2) -
 				(motor->m_motor_state.i_alpha * motor->m_motor_state.v_alpha + motor->m_motor_state.i_beta * motor->m_motor_state.v_beta));
 		motor->m_r_est_state += res_dot * dt;
-
+		// 算出来的发热电阻绝对不允许超过室温配置电阻的 3倍，也不允许低于 0.25倍
 		utils_truncate_number((float*)&motor->m_r_est_state, conf_now->foc_motor_r * 0.25, conf_now->foc_motor_r * 3.0);
 	}
 }
