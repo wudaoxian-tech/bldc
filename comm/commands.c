@@ -1992,16 +1992,16 @@ static THD_FUNCTION(blocking_thread, arg) {
 
 			// Lower f_zv means less dead time distortion and higher possible current
 			// when measuring inductance on high-inductance motors.
-			mcconf->foc_f_zv = 10000.0;
+			mcconf->foc_f_zv = 10000.0;		// 强行把测算时的开关频率改为 10000 Hz，降低死区等非线性的占比
 
-			mc_interface_set_configuration(mcconf);
+			mc_interface_set_configuration(mcconf);	// 立即让新配置在底层生效
 
 			float r = 0.0;
 			float l = 0.0;
 			float ld_lq_diff = 0.0;
 
 			int fault = mcpwm_foc_measure_res_ind(&r, &l, &ld_lq_diff);
-			mc_interface_set_configuration(mcconf_old);
+			mc_interface_set_configuration(mcconf_old);	// 把老配置重新塞回底层
 
 			if (fault != FAULT_CODE_NONE) {
 				r = 0.0;
@@ -2102,7 +2102,7 @@ static THD_FUNCTION(blocking_thread, arg) {
 				float current = buffer_get_float32(data, 1e3, &ind);
 
 				mcconf->motor_type = MOTOR_TYPE_FOC;
-				mcconf->foc_f_zv = 10000.0;
+				mcconf->foc_f_zv = ;
 				mcconf->foc_current_kp = 0.01;
 				mcconf->foc_current_ki = 10.0;
 				mc_interface_set_configuration(mcconf);

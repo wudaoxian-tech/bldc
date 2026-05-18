@@ -68,15 +68,15 @@ typedef enum {
 } mc_foc_sensor_mode;
 
 typedef enum {
-	FOC_CONTROL_SAMPLE_MODE_V0 = 0,
-	FOC_CONTROL_SAMPLE_MODE_V0_V7,
-	FOC_CONTROL_SAMPLE_MODE_V0_V7_INTERPOL
-} mc_foc_control_sample_mode;
+	FOC_CONTROL_SAMPLE_MODE_V0 = 0, 		// V0采样	
+	FOC_CONTROL_SAMPLE_MODE_V0_V7,			// V0和V7均采样，并执行完整的FOC计算
+	FOC_CONTROL_SAMPLE_MODE_V0_V7_INTERPOL	// V0采样，但V7进行差值
+} mc_foc_control_sample_mode;				// 电流采样模式
 
 typedef enum {
-	FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO = 0,
-	FOC_CURRENT_SAMPLE_MODE_ALL_SENSORS,
-	FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT
+	FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO = 0,	// 去掉最靠近零矢量的采样数据，系统默认配置
+	FOC_CURRENT_SAMPLE_MODE_ALL_SENSORS,		// 使用三个采样的数值做变换
+	FOC_CURRENT_SAMPLE_MODE_HIGH_CURRENT		// 电流超过量程时，可以用最小的两个量程电流传感器的数据
 } mc_foc_current_sample_mode;
 
 // Auxiliary output mode

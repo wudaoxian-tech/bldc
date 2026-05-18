@@ -1771,7 +1771,7 @@ int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, fl
 	timeout_configure(60000, 0.0, KILL_SW_MODE_DISABLED);
 
 	// Ramp up the current slowly
-	while (fabsf(motor->m_iq_set - current) > 0.001) {
+	while (fabsf(motor->m_iq_set - current) > 0.001) {	// 缓慢增加驱动电流
 		utils_step_towards((float*)&motor->m_iq_set, current, fabsf(current) / 200.0);
 		fault = mc_interface_get_fault();
 		if (fault != FAULT_CODE_NONE) {
@@ -1794,7 +1794,7 @@ int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, fl
 	chThdSleepMilliseconds(50);
 
 	// Sample
-	motor->m_samples.avg_current_tot = 0.0;
+	motor->m_samples.avg_current_tot = 0.0;	// 清空采样累加器
 	motor->m_samples.avg_voltage_tot = 0.0;
 	motor->m_samples.sample_num = 0;
 
@@ -1860,7 +1860,7 @@ int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, fl
  * The average d and q axis inductance in uH.
  *
  * @return
- * The fault code
+ * The fault code 上位机发送COMM_DETECT_MOTOR_R_L->blocking_thread线程->mcpwm_foc_measure_res_ind->mcpwm_foc_measure_inductance_current->mcpwm_foc_measure_inductance
  */	// 按固定的占空比（电压）打脉冲，测出电感
 int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld_lq_diff, float *inductance) {
 	volatile motor_all_state_t *motor = get_motor_now();
@@ -1881,13 +1881,13 @@ int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld
 	motor->m_state = MC_STATE_OFF;
 	stop_pwm_hw((motor_all_state_t*)motor);
 
-	motor->m_conf->foc_sensor_mode = FOC_SENSOR_MODE_HFI;
-	motor->m_conf->foc_hfi_voltage_start = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;
+	motor->m_conf->foc_sensor_mode = FOC_SENSOR_MODE_HFI;	// V1: 六矢量旋转注入+FFT
+	motor->m_conf->foc_hfi_voltage_start = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;	// 线性内切圆最大值Vbus/SQRT3
 	motor->m_conf->foc_hfi_voltage_run = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;
 	motor->m_conf->foc_hfi_voltage_max = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;
 	motor->m_conf->foc_sl_erpm_hfi = 20000.0;
-	motor->m_conf->foc_control_sample_mode = FOC_CONTROL_SAMPLE_MODE_V0;
-	motor->m_conf->foc_hfi_samples = HFI_SAMPLES_32;
+	motor->m_conf->foc_control_sample_mode = FOC_CONTROL_SAMPLE_MODE_V0;	// V0采样
+	motor->m_conf->foc_hfi_samples = HFI_SAMPLES_32;						// 32点注入
 	motor->m_conf->foc_current_sample_mode = FOC_CURRENT_SAMPLE_MODE_LONGEST_ZERO;
 
 	if (motor->m_conf->foc_f_zv > 30.0e3) {
@@ -2261,18 +2261,18 @@ int mcpwm_foc_measure_res_ind(float *res, float *ind, float *ld_lq_diff) {	// �
 	const float ki_old = motor->m_conf->foc_current_ki;
 	const float res_old = motor->m_conf->foc_motor_r;
 
-	motor->m_conf->foc_current_kp = 0.001;
-	motor->m_conf->foc_current_ki = 1.0;
+	motor->m_conf->foc_current_kp = 0.001;	// 极弱的比例增益 P
+	motor->m_conf->foc_current_ki = 1.0;	// 较弱的积分增益 I
 
 	float i_last = 0.0;
-	for (float i = 2.0;i < (motor->m_conf->l_current_max / 2.0);i *= 1.5) {
+	for (float i = 2.0;i < (motor->m_conf->l_current_max / 2.0);i *= 1.5) {	// 获取1V压降下的电流值
 		float r_tmp = 0.0;
 		fault = mcpwm_foc_measure_resistance(i, 20, false, &r_tmp);
 		if (fault != FAULT_CODE_NONE || r_tmp == 0.0) {
 			goto exit_measure_res_ind;
 		}
-		if (i > (1.0 / r_tmp)) {
-			i_last = i;
+		if (i > (1.0 / r_tmp)) {	// 核心停止条件：当 压降 > 1V 时退出
+			i_last = i;	
 			break;
 		}
 	}
@@ -2285,7 +2285,7 @@ int mcpwm_foc_measure_res_ind(float *res, float *ind, float *ld_lq_diff) {	// �
 	i_last = (motor->m_conf->l_current_max / 2.0);
 #endif
 
-	fault = mcpwm_foc_measure_resistance(i_last, 200, true, res);
+	fault = mcpwm_foc_measure_resistance(i_last, 200, true, res);	// 测试电阻
 	if (fault == FAULT_CODE_NONE && *res != 0.0) {
 		motor->m_conf->foc_motor_r = *res;
 		mcpwm_foc_set_current(0.0);
@@ -3873,7 +3873,7 @@ static void timer_update(motor_all_state_t *motor, float dt) {	// 1ms的线程�
 	}
 
 	// Samples
-	if (motor->m_state == MC_STATE_RUNNING) {		// 运行数据的累加统计，上传上位机显示统计等
+	if (motor->m_state == MC_STATE_RUNNING) {		// 运行数据的累加统计，上传上位机显示统计、电阻离线辨识的电压电流采样
 		const volatile float vd_tmp = motor->m_motor_state.vd;
 		const volatile float vq_tmp = motor->m_motor_state.vq;
 		const volatile float id_tmp = motor->m_motor_state.id;
