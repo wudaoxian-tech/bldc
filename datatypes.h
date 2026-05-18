@@ -194,7 +194,7 @@ typedef enum {
 	DISP_POS_MODE_PID_POS_ERROR,// 目标角度与实际角度的偏差（常用来调参看超调量）
 	DISP_POS_MODE_ENCODER_OBSERVER_ERROR,// 把物理编码器的真实角度，减去无感观测器猜的角度，画出来的误差曲线。用于精准调节无感观测器的 Observer Gain，如果这条线趋近于 0，说明无感算法调到了完美境界
 	DISP_POS_MODE_HALL_OBSERVER_ERROR	// 同上，用来调校霍尔传感器与无感观测器的误差
-} disp_pos_mode;
+} disp_pos_mode;	// 显示模式
 
 typedef enum {
 	SENSOR_PORT_MODE_HALL = 0,

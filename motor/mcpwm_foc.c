@@ -1500,7 +1500,7 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 	motor->m_conf->foc_encoder_offset = 0.0;
 	motor->m_conf->foc_encoder_inverted = false;
 	motor->m_conf->foc_encoder_ratio = 1.0;
-	motor->m_conf->foc_motor_ld_lq_diff = 0.0;
+	motor->m_conf->foc_motor_ld_lq_diff = 0.0;	// 相当于关闭MTPA
 
 	// Find index
 	int cnt = 0;

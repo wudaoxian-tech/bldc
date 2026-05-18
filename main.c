@@ -155,7 +155,7 @@ static THD_FUNCTION(led_thread, arg) {
 	}
 }
 
-static THD_FUNCTION(periodic_thread, arg) {
+static THD_FUNCTION(periodic_thread, arg) {	//  ChibiOS 实时系统线程
 	(void)arg;
 
 	chRegSetThreadName("Main periodic");
@@ -205,7 +205,7 @@ static THD_FUNCTION(periodic_thread, arg) {
 	 
 		HW_TRIM_HSI(); // Compensate HSI for temperature
 
-		chThdSleepMilliseconds(10);
+		chThdSleepMilliseconds(10);	// 100Hz（10ms 一次）
 	}
 }
 
@@ -324,7 +324,7 @@ int main(void) {
 	}
 #endif
 
-	// Threads
+	// Threads，创建线程
 	chThdCreateStatic(led_thread_wa, sizeof(led_thread_wa), NORMALPRIO, led_thread, NULL);
 	chThdCreateStatic(periodic_thread_wa, sizeof(periodic_thread_wa), NORMALPRIO, periodic_thread, NULL);
 	chThdCreateStatic(flash_integrity_check_thread_wa, sizeof(flash_integrity_check_thread_wa), LOWPRIO, flash_integrity_check_thread, NULL);

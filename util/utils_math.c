@@ -372,7 +372,7 @@ void utils_fast_sincos_better(float angle, float *sin, float *cos) { // 用多�
  * @return
  * The value with the lowest magnitude.
  */
-float utils_min_abs(float va, float vb) {
+float utils_min_abs(float va, float vb) {	// 返回绝对值小的数
 	float res;
 	if (fabsf(va) < fabsf(vb)) {
 		res = va;
