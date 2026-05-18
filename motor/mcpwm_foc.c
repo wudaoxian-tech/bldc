@@ -2330,7 +2330,7 @@ int mcpwm_foc_hall_detect(float current, uint8_t *hall_table, bool *result) {
 
 	// MTPA overrides id target
 	MTPA_MODE mtpa_old = motor->m_conf->foc_mtpa_mode;
-	motor->m_conf->foc_mtpa_mode = MTPA_MODE_OFF;
+	motor->m_conf->foc_mtpa_mode = MTPA_MODE_OFF;	// 关闭MTPA
 
 	// Disable timeout
 	systime_t tout = timeout_get_timeout_msec();
@@ -2345,7 +2345,7 @@ int mcpwm_foc_hall_detect(float current, uint8_t *hall_table, bool *result) {
 	*result = false;
 
 	for (int i = 0;i < 1000;i++) {
-		motor->m_id_set = (float)i * current / 1000.0;
+		motor->m_id_set = (float)i * current / 1000.0;	// 缓慢增加空托电流
 		fault = mc_interface_get_fault();
 		if (fault != FAULT_CODE_NONE) {
 			goto exit_hall_detect;
@@ -2361,26 +2361,26 @@ int mcpwm_foc_hall_detect(float current, uint8_t *hall_table, bool *result) {
 	memset(hall_iterations, 0, sizeof(hall_iterations));
 
 	// Forwards
-	for (int i = 0;i < 3;i++) {
+	for (int i = 0;i < 3;i++) {								// 正转 3 圈
 		for (int j = 0;j < 360;j++) {
-			motor->m_phase_now_override = DEG2RAD_f(j);
+			motor->m_phase_now_override = DEG2RAD_f(j);		// 强加电角度
 			fault = mc_interface_get_fault();
 			if (fault != FAULT_CODE_NONE) {
 				goto exit_hall_detect;
 			}
-			chThdSleepMilliseconds(5);
-
+			chThdSleepMilliseconds(5);						// 等待稳定
+			// 读出当前霍尔状态
 			int hall = utils_read_hall(motor != &m_motor_1, motor->m_conf->m_hall_extra_samples);
 			float s, c;
-			sincosf(motor->m_phase_now_override, &s, &c);
+			sincosf(motor->m_phase_now_override, &s, &c);	// 使用圆周平均法
 			sin_hall[hall] += s;
 			cos_hall[hall] += c;
-			hall_iterations[hall]++;
+			hall_iterations[hall]++;						// 记录该霍尔状态出现的次数
 		}
 	}
 
 	// Reverse
-	for (int i = 0;i < 3;i++) {
+	for (int i = 0;i < 3;i++) {								// 正转 3 圈
 		for (int j = 360;j >= 0;j--) {
 			motor->m_phase_now_override = DEG2RAD_f(j);
 			fault = mc_interface_get_fault();
@@ -2399,13 +2399,13 @@ int mcpwm_foc_hall_detect(float current, uint8_t *hall_table, bool *result) {
 	}
 
 	int fails = 0;
-	for(int i = 0;i < 8;i++) {
-		if (hall_iterations[i] > 30) {
-			float ang = RAD2DEG_f(atan2f(sin_hall[i], cos_hall[i]));
+	for(int i = 0;i < 8;i++) {				// 遍历 000 到 111 这 8 种组合
+		if (hall_iterations[i] > 30) {		// 如果这个状态出现超过 30 次，认为是有效状态
+			float ang = RAD2DEG_f(atan2f(sin_hall[i], cos_hall[i]));	// 算出平均中心角
 			utils_norm_angle(&ang);
-			hall_table[i] = (uint8_t)(ang * 200.0 / 360.0);
+			hall_table[i] = (uint8_t)(ang * 200.0 / 360.0);	// 映射到了 0 ~ 200 的整数区间
 		} else {
-			hall_table[i] = 255;
+			hall_table[i] = 255;	 // 无效状态，填 255
 			fails++;
 		}
 	}
