@@ -1468,9 +1468,9 @@ float mcpwm_foc_get_est_ind(void) {
  * Is set to true if the encoder reports an increase in angle in the opposite
  * direction of the motor.
  *
- * @return
- * The fault code
- */
+ * @return，一旦触发，这个函数会霸占并阻塞当前线程好几秒甚至十几秒钟
+ * The fault code，不在高频的 FOC 中断（20kHz）里跑，也不在后台的 1kHz 定时器线程里跑。它是在通信指令线程中被调用的
+ */	// 在 VESC Tool 里点击 "Detect Encoder" 时，执行的就是这段代码，极对数（Ratio）、旋转方向（Inverted）和 初始偏置角（Offset）
 int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ratio, bool *inverted) {
 	int fault = FAULT_CODE_NONE;
 	mc_interface_lock();
@@ -1504,20 +1504,20 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 
 	// Find index
 	int cnt = 0;
-	while(!encoder_index_found()) {
-		for (float i = 0.0;i < 2.0 * M_PI;i += (2.0 * M_PI) / 500.0) {
-			motor->m_phase_now_override = i;
-			fault = mc_interface_get_fault();
+	while(!encoder_index_found()) {	// 只要还没碰到 Z 脉冲，就一直循环
+		for (float i = 0.0;i < 2.0 * M_PI;i += (2.0 * M_PI) / 500.0) {	// 强制定子磁场步进旋转一整圈（电角度 0 到 2π）
+			motor->m_phase_now_override = i;	// 强行指定定子磁场角度
+			fault = mc_interface_get_fault();	// 实时检查是否过流或断开
 			if (fault != FAULT_CODE_NONE) {
-				goto exit_encoder_detect;
+				goto exit_encoder_detect;	// 有问题立刻退出，防止烧电机
 			}
-			chThdSleepMilliseconds(1);
+			chThdSleepMilliseconds(1);	// 每走一步停 1 毫秒
 		}
 
 		cnt++;
-		if (cnt > 30) {
+		if (cnt > 30) {					// 如果转了 30 个电周期还没碰到
 			// Give up
-			break;
+			break;						// 放弃寻找，强行跳出
 		}
 	}
 
@@ -1525,9 +1525,9 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 		commands_printf("Index found");
 	}
 
-	// Rotate
+	// Rotate，为了系统同步再转一圈
 	for (float i = 0.0;i < 2.0 * M_PI;i += (2.0 * M_PI) / 500.0) {
-		motor->m_phase_now_override = i;
+		motor->m_phase_now_override = i;	// 电机最后定在360°/0°位置
 		fault = mc_interface_get_fault();
 		if (fault != FAULT_CODE_NONE) {
 			goto exit_encoder_detect;
@@ -1540,12 +1540,12 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 	}
 
 	// Inverted and ratio
-	chThdSleepMilliseconds(1000);
+	chThdSleepMilliseconds(1000);	// 等待1s，稳定不晃动
 
 	const int it_rat = 30;
 	float s_sum = 0.0;
 	float c_sum = 0.0;
-	float first = motor->m_phase_now_encoder;
+	float first = motor->m_phase_now_encoder;	// 实时线程里获取的编码器角度
 
 	for (int i = 0; i < it_rat; i++) {
 		float phase_old = motor->m_phase_now_encoder;
@@ -1563,10 +1563,10 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 		utils_norm_angle_rad((float*)&motor->m_phase_now_override);
 		chThdSleepMilliseconds(300);
 		timeout_reset();
-		float diff = utils_angle_difference_rad(motor->m_phase_now_encoder, phase_old);
+		float diff = utils_angle_difference_rad(motor->m_phase_now_encoder, phase_old);	// 现在机械角度-120度拖动之前的机械角度
 
 		float s, c;
-		sincosf(diff, &s, &c);
+		sincosf(diff, &s, &c);	// 弧度角 diff 的正弦值写入指针 s 指向的内存，余弦值写入指针 c 指向的内存
 		s_sum += s;
 		c_sum += c;
 
@@ -1575,7 +1575,7 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 		}
 
 		if (i > 3 && fabsf(utils_angle_difference_rad(motor->m_phase_now_encoder, first)) < fabsf(diff / 2.0)) {
-			break;
+			break;	// 测量时一旦发现转子转完一整圈、回到原位，就自动停止测量，不用等满 30 次
 		}
 	}
 
@@ -1595,7 +1595,7 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 		utils_norm_angle_rad((float*)&motor->m_phase_now_override);
 		chThdSleepMilliseconds(300);
 		timeout_reset();
-		float diff = utils_angle_difference_rad(phase_old, motor->m_phase_now_encoder);
+		float diff = utils_angle_difference_rad(phase_old, motor->m_phase_now_encoder);	// 120度拖动之前的机械角度-现在机械角度
 
 		float s, c;
 		sincosf(diff, &s, &c);
@@ -1612,8 +1612,8 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 	}
 
 	float diff = RAD2DEG_f(atan2f(s_sum, c_sum));
-	*inverted = diff < 0.0;
-	*ratio = roundf(((2.0 / 3.0) * 180.0) / fabsf(diff));
+	*inverted = diff < 0.0;	// 获取转向
+	*ratio = roundf(((2.0 / 3.0) * 180.0) / fabsf(diff));	// 极对数
 
 	motor->m_conf->foc_encoder_inverted = *inverted;
 	motor->m_conf->foc_encoder_ratio = *ratio;
@@ -1624,7 +1624,7 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 	}
 
 	// Rotate
-	for (float i = motor->m_phase_now_override;i < 2.0 * M_PI;i += (2.0 * M_PI) / 500.0) {
+	for (float i = motor->m_phase_now_override;i < 2.0 * M_PI;i += (2.0 * M_PI) / 500.0) {	// 旋转从0电角度
 		motor->m_phase_now_override = i;
 		fault = mc_interface_get_fault();
 		if (fault != FAULT_CODE_NONE) {
@@ -1642,8 +1642,8 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
 	s_sum = 0.0;
 	c_sum = 0.0;
 
-	for (int i = 0;i < it_ofs;i++) {
-		float step = (2.0 * M_PI * motor->m_conf->foc_encoder_ratio) / ((float)it_ofs);
+	for (int i = 0;i < it_ofs;i++) {	// 旋转圈数 = 极对数
+		float step = (2.0 * M_PI * motor->m_conf->foc_encoder_ratio) / ((float)it_ofs);	// 每次转120°电角度
 		float override = (float)i * step;
 
 		while (motor->m_phase_now_override != override) {

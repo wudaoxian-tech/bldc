@@ -87,8 +87,8 @@ void timeout_configure(systime_t timeout, float brake_current, KILL_SW_MODE kill
 	timeout_brake_current = brake_current;
 	timeout_kill_sw_mode = kill_sw_mode;
 }
-
-void timeout_reset(void) {
+// 告诉 VESC 固件：“我现在还在正常执行测试流程，系统没死机，遥控器也没断开，请不要自动切断电机电源”
+void timeout_reset(void) {	// 喂狗，重置系统看门狗/安全超时定时器
 	last_update_time = chVTGetSystemTimeX();
 }
 
