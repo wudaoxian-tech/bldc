@@ -1894,20 +1894,20 @@ int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld
 		motor->m_conf->foc_f_zv = 30.0e3;
 	}
 
-	mcpwm_foc_set_configuration(motor->m_conf);
+	mcpwm_foc_set_configuration(motor->m_conf);	// 保存HFI的配置
 
 	chThdSleepMilliseconds(1);
 
 	timeout_reset();
-	mcpwm_foc_set_duty(0.0);
+	mcpwm_foc_set_duty(0.0);		// 正常的驱动电压矢量置零，启动HFI
 	chThdSleepMilliseconds(1);
 
 	int ready_cnt = 0;
-	while (!motor->m_hfi.ready) {
+	while (!motor->m_hfi.ready) {	// 等待 HFI 注入算法就绪
 		chThdSleepMilliseconds(1);
 		ready_cnt++;
 		if (ready_cnt > 100) {
-			break;
+			break;					// ... 超时保护
 		}
 	}
 
@@ -1920,9 +1920,9 @@ int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld
 	float i_sum = 0.0;
 	float iterations = 0.0;
 
-	for (int i = 0;i < (samples / 10);i++) {
+	for (int i = 0;i < (samples / 10);i++) {	// 循环读完整H32点的次数
 		timeout_reset();
-		mcpwm_foc_set_duty(0.0);
+		mcpwm_foc_set_duty(0.0);	// 正常的驱动电压矢量置零
 
 		fault = mc_interface_get_fault();
 		if (fault != FAULT_CODE_NONE) {
@@ -1949,12 +1949,12 @@ int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld
 			return fault;
 		}
 
-		chThdSleepMilliseconds(10);
+		chThdSleepMilliseconds(10);		// 就是在这里，每次循环睡 10ms
 
 		float real_bin0, imag_bin0;
 		float real_bin2, imag_bin2;
 		float real_bin0_i, imag_bin0_i;
-
+		// real_bin0_i：用于mcpwm_foc_measure_inductance_current测试电流寻优
 		motor->m_hfi.fft_bin0_func((float*)motor->m_hfi.buffer, &real_bin0, &imag_bin0); // real_bin0 contains the average of the inverse of the inductance
 		motor->m_hfi.fft_bin2_func((float*)motor->m_hfi.buffer, &real_bin2, &imag_bin2); // real_bin2 (cosine) and imag_bin2 (sine) contain the magnitude of the measured 2nd harmonic. Note: dual sided and length normalized FFT, so signal magnitude is twice the bin value.
 		motor->m_hfi.fft_bin0_func((float*)motor->m_hfi.buffer_current, &real_bin0_i, &imag_bin0_i); // real_bin0_i contains the average delta current
@@ -2041,13 +2041,13 @@ int mcpwm_foc_measure_inductance_current(float curr_goal, int samples, float *cu
 	for (float i = 0.02;i < 0.5;i *= 1.5) {
 		utils_truncate_number_abs(&i, 0.6);
 		float i_tmp;
-		fault = mcpwm_foc_measure_inductance(i, 10, &i_tmp, 0, 0);
+		fault = mcpwm_foc_measure_inductance(i, 10, &i_tmp, 0, 0);	// 调用底层打脉冲函数，只测 10 次（极速模式），忽略电感结果(传0)
 		if (fault != FAULT_CODE_NONE) {
 			return fault;
 		}
 
 		duty_last = i;
-		if (i_tmp >= curr_goal) {
+		if (i_tmp >= curr_goal) {	// 核心判定：如果这次打脉冲激发出的瞬态电流 i_tmp，已经达到或超过了目标电流
 			break;
 		}
 	}

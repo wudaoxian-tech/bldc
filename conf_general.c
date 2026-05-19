@@ -559,8 +559,8 @@ bool conf_general_detect_motor_param(float current, float min_rpm, float low_dut
 
 	mc_interface_lock();
 
-	mc_interface_lock_override_once();
-	mc_interface_set_current(current);
+	mc_interface_lock_override_once();	// 放行外部输入一次
+	mc_interface_set_current(current);	// 设定电流，并启动RUNNING_STATE
 
 	// Try to spin up the motor. Up to three attempts with different settings are made.
 	bool started = false;
@@ -990,16 +990,16 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 		return fault;
 	}
 	// Calculate kp and ki from supplied resistance and inductance, default to 1000us time constant.
-	float tc = 1500;
-	float bw = 1.0 / (tc * 1e-6);
-	float kp = ind * bw;
+	float tc = 1500;				// 测试电流环时间常数
+	float bw = 1.0 / (tc * 1e-6);	// 测试电流环带宽
+	float kp = ind * bw;			
 	float ki = res * bw;
 
-	mc_configuration *mcconf = mempools_alloc_mcconf();
+	mc_configuration *mcconf = mempools_alloc_mcconf();		// 寻找一份内存
 	mc_configuration *mcconf_old = mempools_alloc_mcconf();
 
 	*mcconf = *mc_interface_get_configuration();
-	*mcconf_old = *mcconf;
+	*mcconf_old = *mcconf;							// 保存现有配置
 
 	if (duty > (mcconf->l_max_duty * 0.9)) {
 		duty = mcconf->l_max_duty * 0.9;
@@ -1009,11 +1009,11 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 	mcconf->foc_sensor_mode = FOC_SENSOR_MODE_SENSORLESS;
 	mcconf->foc_current_kp = kp;
 	mcconf->foc_current_ki = ki;
-	mcconf->foc_cc_decoupling = FOC_CC_DECOUPLING_DISABLED;
-	mc_interface_set_configuration(mcconf);
+	mcconf->foc_cc_decoupling = FOC_CC_DECOUPLING_DISABLED;	// 关闭解耦
+	mc_interface_set_configuration(mcconf);					// 用于磁链侦测的配置生效
 
 	// Wait maximum 5s for fault code to disappear
-	for (int i = 0;i < 500;i++) {
+	for (int i = 0;i < 500;i++) {							// 为什么需要等故障消失？？？
 		if (mc_interface_get_fault() == FAULT_CODE_NONE) {
 			break;
 		}
@@ -1021,7 +1021,7 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 	}
 
 	fault = mc_interface_get_fault();
-	if (fault != FAULT_CODE_NONE) {
+	if (fault != FAULT_CODE_NONE) {		// 如果还有故障，退出侦测程序，并恢复原来的配置，并释放内存资源
 		mc_interface_set_configuration(mcconf_old);
 		mempools_free_mcconf(mcconf);
 		mempools_free_mcconf(mcconf_old);
@@ -1030,7 +1030,7 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 
 	// Wait one second for things to get ready after
 	// the fault disapears.
-	chThdSleepMilliseconds(1000);
+	chThdSleepMilliseconds(1000);	// 等待1s
 
 	// Disable timeout
 	systime_t tout = timeout_get_timeout_msec();
@@ -1039,7 +1039,7 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 	timeout_reset();
 	timeout_configure(60000, 0.0, KILL_SW_MODE_DISABLED);
 
-	mc_interface_lock();
+	mc_interface_lock();			// 配置锁存
 
 	int cnt = 0;
 	float rpm_now = 0;
@@ -1047,8 +1047,8 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 	if (fabsf(current) > mcconf->cc_min_current) {
 		// Start by locking the motor
 		for (int i = 0;i < 200;i++) {
-			mc_interface_lock_override_once();
-			mc_interface_set_openloop_current((float)i * current / 200.0, rpm_now);
+			mc_interface_lock_override_once();	// 放行输入一次
+			mc_interface_set_openloop_current((float)i * current / 200.0, rpm_now);	// 电流从 0 → target
 			fault = mc_interface_get_fault();
 			if (fault != FAULT_CODE_NONE) {
 				timeout_configure(tout, tout_c, tout_ksw);
@@ -1083,14 +1083,14 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 			return fault;
 		}
 
-		duty_still /= samples;
+		duty_still /= samples;	// 电机在当前电流下，不转时的典型占空比
 		float duty_max = 0.0;
 		const int max_time = 15000;
 
-		while (fabsf(mc_interface_get_duty_cycle_now()) < duty) {
-			rpm_now += erpm_per_sec / 1000.0;
+		while (fabsf(mc_interface_get_duty_cycle_now()) < duty) {	// 转速爬升 + 占空比监测
+			rpm_now += erpm_per_sec / 1000.0;		// 转速爬升
 			mc_interface_lock_override_once();
-			mc_interface_set_openloop_current(current, mcconf->m_invert_direction ? -rpm_now : rpm_now);
+			mc_interface_set_openloop_current(current, mcconf->m_invert_direction ? -rpm_now : rpm_now);	// 设置转速和电流，让电机旋转
 
 			fault = mc_interface_get_fault();
 			if (fault != FAULT_CODE_NONE) {
@@ -1105,53 +1105,53 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 			}
 
 
-			chThdSleepMilliseconds(1);
-			cnt++;
+			chThdSleepMilliseconds(1);	// 执行加速节奏
+			cnt++;						// 已执行的步数
 
 			float duty_now = fabsf(mc_interface_get_duty_cycle_now());
 
-			if (duty_now > duty_max) {
+			if (duty_now > duty_max) {	// 记录当前占空比 \ 最大值
 				duty_max = duty_now;
 			}
 
-			if (cnt >= max_time) {
+			if (cnt >= max_time) {	// 超时（15 秒）
 				*linkage = -1.0;
 				break;
 			}
 
-			if (cnt > 4000 && duty_now < (duty_max * 0.7)) {
+			if (cnt > 4000 && duty_now < (duty_max * 0.7)) {	// 失步：已加速至少 4 秒,占空比骤降 30%
 				cnt = max_time;
 				*linkage = -2.0;
 				break;
 			}
 
-			if (cnt > 4000 && duty < duty_still * 1.1) {
+			if (cnt > 4000 && duty < duty_still * 1.1) {	// 未转动：加速 4 秒后，占空比接近静止状态
 				cnt = max_time;
 				*linkage = -3.0;
 				break;
 			}
 
-			if (rpm_now >= 12000) {
+			if (rpm_now >= 12000) {	// 转速上限保护
 				break;
 			}
 		}
 
-		chThdSleepMilliseconds(1000);
+		chThdSleepMilliseconds(1000);	// 等待稳定（1 秒）
 
-		if (cnt < max_time) {
+		if (cnt < max_time) {	// 成功加速
 			float vq_avg = 0.0;
 			float vd_avg = 0.0;
 			float iq_avg = 0.0;
 			float id_avg = 0.0;
 			float samples2 = 0.0;
 
-			for (int i = 0;i < 10000;i++) {
+			for (int i = 0;i < 10000;i++) {	// 10 秒稳态采样
 				vq_avg += mcpwm_foc_get_vq();
 				vd_avg += mcpwm_foc_get_vd();
 				iq_avg += mcpwm_foc_get_iq();
 				id_avg += mcpwm_foc_get_id();
 				samples2 += 1.0;
-				chThdSleep(1);
+				chThdSleep(1);	// 等待1ms
 
 				fault = mc_interface_get_fault();
 				if (fault != FAULT_CODE_NONE) {
@@ -1165,18 +1165,18 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 			id_avg /= samples2;
 
 			float rad_s = RPM2RADPS_f(rpm_now);
-			float v_mag = NORM2_f(vq_avg, vd_avg);
+			float v_mag = NORM2_f(vq_avg, vd_avg);	// 计算模长
 			float i_mag = NORM2_f(iq_avg, id_avg);
-			*linkage = (v_mag - res * i_mag) / rad_s - i_mag * ind;
+			*linkage = (v_mag - res * i_mag) / rad_s - i_mag * ind;	// 磁链
 
-			mcconf->foc_motor_r = res;
+			mcconf->foc_motor_r = res;	// 谢晖配置
 			mcconf->foc_motor_l = ind;
 			mcconf->foc_motor_flux_linkage = *linkage;
 			mcconf->foc_observer_gain = 0.5e3 / SQ(*linkage);
 			mc_interface_set_configuration(mcconf);
 
 			// Give the observer time to settle
-			chThdSleepMilliseconds(500);
+			chThdSleepMilliseconds(500);	// 重新配置参数后，500ms等待观测器收敛
 
 			// Turn off the FETs
 			mcpwm_foc_stop_pwm(mc_interface_get_motor_thread() == 2);
@@ -1187,10 +1187,10 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 			// Let the H-bridges settle
 			chThdSleepMilliseconds(5);
 		}
-	} else {
+	} else {	// 电流太小，未测试直接赋值0
 		*linkage = 0.0;
 	}
-
+	// 无驱动磁链测量（反电动势法）
 	float linkage_sum = 0.0;
 	float linkage_samples = 0.0;
 	if (fault == FAULT_CODE_NONE) {
@@ -1200,8 +1200,8 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 				break;
 			}
 
-			linkage_sum += mcpwm_foc_get_vq() / rad_s_now;
-
+			linkage_sum += mcpwm_foc_get_vq() / rad_s_now;	// 在观测器准确工作情况，滑行的反电势完全等于Vq
+			// 用以下模长计算，可以不用使用观测器，但是会使电流采样噪音在计算模长的平方里累加，但只有Vq时，随机噪音会抵消
 			// Optionally use magnitude
 			//              linkage_sum += sqrtf(SQ(mcpwm_foc_get_vq()) + SQ(mcpwm_foc_get_vd())) / rad_s_now;
 

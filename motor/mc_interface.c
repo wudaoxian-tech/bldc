@@ -460,7 +460,7 @@ void mc_interface_unlock(void) {
 /**
  * Allow just one motor control command in the locked state.
  */
-void mc_interface_lock_override_once(void) {
+void mc_interface_lock_override_once(void) {	// 外部实时输入放行一次，比如油门，占空比等
 	motor_now()->m_lock_override_once = true;
 }
 
@@ -1787,16 +1787,16 @@ int mc_interface_try_input(void) {
 	// TODO: Remove this later
 	if (mc_interface_get_state() == MC_STATE_DETECTING) { // 正在自学习时，如果拧下油门会把自学习流程打断，关波
 		mcpwm_stop_pwm();
-		motor_now()->m_ignore_iterations = MCPWM_DETECT_STOP_TIME;
+		motor_now()->m_ignore_iterations = MCPWM_DETECT_STOP_TIME;	// “输入屏蔽倒计时器”，倒计时结束后自动恢复
 	}
 
 	int retval = motor_now()->m_ignore_iterations;	// 只要非0，所有的外部油门命令会被屏蔽
 
 	if (!motor_now()->m_ignore_iterations && motor_now()->m_lock_enabled) {
-		if (!motor_now()->m_lock_override_once) {
+		if (!motor_now()->m_lock_override_once) {	// m_lock_override_once == 1 放行外部输入1次
 			retval = 1;
 		} else {
-			motor_now()->m_lock_override_once = false;
+			motor_now()->m_lock_override_once = false;	// 放行后，清零
 		}
 	}
 

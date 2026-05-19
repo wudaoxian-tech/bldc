@@ -65,7 +65,7 @@ typedef enum {
 	FOC_SENSOR_MODE_HFI_V3,		// V3: V7零矢量脉动注入
 	FOC_SENSOR_MODE_HFI_V4,		// V4: 改进V0（双采样）
 	FOC_SENSOR_MODE_HFI_V5		// V5: 改进V7（双采样）
-} mc_foc_sensor_mode;
+} mc_foc_sensor_mode;			// 获取角度方式
 
 typedef enum {
 	FOC_CONTROL_SAMPLE_MODE_V0 = 0, 		// V0采样	
