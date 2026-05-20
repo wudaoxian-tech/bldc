@@ -130,7 +130,7 @@ static volatile bool pid_thd_stop;
 #ifdef HW_HAS_DUAL_MOTORS
 #define M_MOTOR(is_second_motor) (is_second_motor ? &m_motor_2 : &m_motor_1)
 #else
-#define M_MOTOR(is_second_motor)  (((void)is_second_motor), &m_motor_1)
+#define M_MOTOR(is_second_motor)  (((void)is_second_motor), &m_motor_1)	// 无论is_second_motor 0 还是 1，都返回&m_motor_1
 #endif
 
 static void update_hfi_samples(foc_hfi_samples samples, volatile motor_all_state_t *motor) {
@@ -748,21 +748,21 @@ void mcpwm_foc_set_duty_noramp(float dutyCycle) {
 void mcpwm_foc_set_pid_speed(float rpm) {
 	volatile motor_all_state_t *motor = get_motor_now();
 
-	if (motor->m_conf->s_pid_ramp_erpms_s > 0.0 ) {
+	if (motor->m_conf->s_pid_ramp_erpms_s > 0.0 ) {	// 速度ramp速度
 		if (motor->m_control_mode != CONTROL_MODE_SPEED ||
 				motor->m_state != MC_STATE_RUNNING) {
-			motor->m_speed_pid_set_rpm = mcpwm_foc_get_rpm();
+			motor->m_speed_pid_set_rpm = mcpwm_foc_get_rpm();	// 获取当前速度
 		}
 
-		motor->m_speed_command_rpm = rpm;
+		motor->m_speed_command_rpm = rpm;	// 速度环目标速度值
 	} else {
 		motor->m_speed_pid_set_rpm = rpm;
 	}
 
-	motor->m_control_mode = CONTROL_MODE_SPEED;
+	motor->m_control_mode = CONTROL_MODE_SPEED;				// 速度环控制
 
 	if (motor->m_state != MC_STATE_RUNNING &&
-			fabsf(rpm) >= motor->m_conf->s_pid_min_erpm) {
+			fabsf(rpm) >= motor->m_conf->s_pid_min_erpm) {	// 目标速度值大于最小速度环速度
 		motor->m_motor_released = false;
 		motor->m_state = MC_STATE_RUNNING;
 	}
@@ -815,7 +815,7 @@ void mcpwm_foc_release_motor(void) {
 	get_motor_now()->m_control_mode = CONTROL_MODE_CURRENT;
 	get_motor_now()->m_iq_set = 0.0;
 	get_motor_now()->m_id_set = 0.0;
-	get_motor_now()->m_motor_released = true;
+	get_motor_now()->m_motor_released = true;	// 电机释放，自由旋转标志位
 }
 
 /**
@@ -1043,7 +1043,7 @@ float mcpwm_foc_get_pid_pos_now(void) {
  * @return
  * The switching frequency in Hz.
  */
-float mcpwm_foc_get_switching_frequency_now(void) {
+float mcpwm_foc_get_switching_frequency_now(void) {	// 零矢量（包含V0和V7）出现的频率，是PWM开关频率的2倍
 	return get_motor_now()->m_conf->foc_f_zv;
 }
 
@@ -3105,7 +3105,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		}
 	}
 
-	if (encoder_is_being_used) {
+	if (encoder_is_being_used) {	// 如果编码器，获取编码器的角度
 		float phase_tmp = enc_ang;
 		if (conf_now->foc_encoder_inverted) {
 			phase_tmp = 360.0 - phase_tmp;
@@ -3324,7 +3324,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 					id_set_tmp = 0.0;
 				}
 				break;
-
+			// HFI 模式，把角度赋值给FOC控制
 			case FOC_SENSOR_MODE_HFI_START:	// 在起步的最初一瞬间，用 HFI “听”一下转子的位置
 				motor_now->m_motor_state.phase = motor_now->m_phase_now_observer;
 
@@ -3437,7 +3437,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		motor_now->m_motor_state.iq_target = iq_set_tmp;
 
 		control_current(motor_now, dt);
-	} else {
+	} else {	//  Motor != Running，跟踪角度、更新观测器、更新电流环积分
 		// Motor is not running
 
 		// The current is 0 when the motor is undriven
@@ -3998,7 +3998,7 @@ static THD_FUNCTION(timer_thread, arg) {	// 定时器线程
 	}
 }
 
-static void hfi_update(volatile motor_all_state_t *motor, float dt) {	// 在500us的线程里执行
+static void hfi_update(volatile motor_all_state_t *motor, float dt) {	// 在500us的线程里执行，HFI REAY后，FFT获取角度信息
 	(void)dt;
 	float rpm_abs = fabsf(RADPS2RPM_f(motor->m_speed_est_fast));
 
@@ -4302,7 +4302,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 	float d_gain_scale = 1.0;
 	if (conf_now->foc_d_gain_scale_start < 0.99) {
 		float max_mod_norm = fabsf(state_m->duty_now / max_duty);	// 当前占空比与允许的最大占空比的比值
-		if (max_duty < 0.01) {
+		if (max_duty < 0.01) {	// 数值保护
 			max_mod_norm = 1.0;
 		}
 		if (max_mod_norm > conf_now->foc_d_gain_scale_start) {
@@ -4494,7 +4494,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 		}
 
 		utils_truncate_number_abs(&hfi_voltage, state_m->v_bus * (1.0 - fabsf(state_m->duty_now)) * SQRT3_BY_2 * (2.0 / 3.0) * 0.95);	// 注入电压不超过95%占空比
-
+		// 以下不同HFI模式形成不同注入电压矢量
 		if ((conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V4 || conf_now->foc_sensor_mode == FOC_SENSOR_MODE_HFI_V5) && hfi_est_done) {	// HFI V4/V5版本
 			if (motor->m_hfi.is_samp_n) {
 				float sample_now = c * motor->m_i_beta_sample_with_offset - s * motor->m_i_alpha_sample_with_offset;	// q轴电流，垂直于注入方向，角度误差信息在这里 
@@ -4660,7 +4660,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				(uint32_t*)&state_m->svm_sector); //svm_sector already gettings written here. Seems incorrect since it will only be used in the next update, but svm_sector seems unused so no issue.
 			motor->m_duty_next_set = true;	// 等下一次进入中断的最开头（即代码最上方的 if (motor_other->m_duty_next_set) 分支），瞬间砸给底层寄存器
 		}
-	} else {
+	} else {	// do_hfi == 0
 #ifdef HW_HAS_DUAL_MOTORS
 		if (motor == &m_motor_2) {
 			CURRENT_FILTER_ON_M2();
@@ -4671,7 +4671,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 		CURRENT_FILTER_ON();
 #endif
 		motor->m_hfi.ind = 0;
-		motor->m_hfi.ready = false;
+		motor->m_hfi.ready = false;	// do_hfi == 0时，把标志位Ready复位
 		motor->m_hfi.is_samp_n = false;
 		motor->m_hfi.prev_sample = 0.0;
 		motor->m_hfi.double_integrator = 0.0;

@@ -542,10 +542,10 @@ static THD_FUNCTION(adc_thread, arg) {
 
 		was_pid = false;
 
-		// Find lowest RPM (for traction control)
+		// Find lowest RPM (for traction control)，寻找“最慢轮”作为抓地力基准
 		float rpm_local = mc_interface_get_rpm();
 		float rpm_lowest = rpm_local;
-		if (config.multi_esc) {
+		if (config.multi_esc) {		// 寻找总线上的每一个电机的转速
 			for (int i = 0;i < CAN_STATUS_MSGS_TO_STORE;i++) {
 				can_status_msg *msg = comm_can_get_status_msg_index(i);
 
@@ -609,12 +609,12 @@ static THD_FUNCTION(adc_thread, arg) {
 									rpm_tmp = -rpm_tmp;
 								}
 
-								float diff = rpm_tmp - rpm_lowest;
+								float diff = rpm_tmp - rpm_lowest;	// 确定每个电机的与最慢电机的转速差
                                 if (diff < TC_DIFF_MAX_PASS) diff = 0;
                                 if (diff > config.tc_max_diff) diff = config.tc_max_diff;
-								current_out = utils_map(diff, 0.0, config.tc_max_diff, current_rel, 0.0);
+								current_out = utils_map(diff, 0.0, config.tc_max_diff, current_rel, 0.0);	// 滑移量 diff，把原本的油门电流 current_rel 线性缩减
 							}
-
+							// 下发每个电机的转矩电流
 							if (is_reverse) {
 								comm_can_set_current_rel(msg->id, -current_out);
 							} else {
