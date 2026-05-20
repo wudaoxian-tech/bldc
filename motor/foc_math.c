@@ -753,7 +753,7 @@ void foc_hfi_adjust_angle(float ang_err, motor_all_state_t *motor, float dt) { /
 	motor->m_hfi.ready = true;
 }
 
-void foc_precalc_values(motor_all_state_t *motor) {
+void foc_precalc_values(motor_all_state_t *motor) {	// FOC 控制核心参数的提前计算，用于配置
 	const mc_configuration *conf_now = motor->m_conf;
 	motor->p_lq = conf_now->foc_motor_l + conf_now->foc_motor_ld_lq_diff * 0.5;
 	motor->p_ld = conf_now->foc_motor_l - conf_now->foc_motor_ld_lq_diff * 0.5;
