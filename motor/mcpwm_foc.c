@@ -133,7 +133,7 @@ static volatile bool pid_thd_stop;
 #define M_MOTOR(is_second_motor)  (((void)is_second_motor), &m_motor_1)	// 无论is_second_motor 0 还是 1，都返回&m_motor_1
 #endif
 
-static void update_hfi_samples(foc_hfi_samples samples, volatile motor_all_state_t *motor) {
+static void update_hfi_samples(foc_hfi_samples samples, volatile motor_all_state_t *motor) {	// 配置HFI参数
 	utils_sys_lock_cnt();
 
 	memset((void*)&motor->m_hfi, 0, sizeof(motor->m_hfi));
@@ -632,7 +632,7 @@ bool mcpwm_foc_init_done(void) {
 	return m_init_done;
 }
 
-void mcpwm_foc_set_configuration(mc_configuration *configuration) {
+void mcpwm_foc_set_configuration(mc_configuration *configuration) {	// 停机配置采样频率和HFI的采样点数，同步虚拟电机参数
 	get_motor_now()->m_conf = configuration;
 	foc_precalc_values((motor_all_state_t*)get_motor_now());
 
@@ -660,15 +660,15 @@ void mcpwm_foc_set_configuration(mc_configuration *configuration) {
 #endif
 #endif
 	}
-
-	if (((1 << get_motor_now()->m_conf->foc_hfi_samples) * 8) != get_motor_now()->m_hfi.samples) {
+	// foc_hfi_samples 数据是枚举型 （0：8；1：16；2：32）
+	if (((1 << get_motor_now()->m_conf->foc_hfi_samples) * 8) != get_motor_now()->m_hfi.samples) {	// 用户配置的采样点数与系统实际运行的采样点数不一致
 		get_motor_now()->m_control_mode = CONTROL_MODE_NONE;
 		get_motor_now()->m_state = MC_STATE_OFF;
-		stop_pwm_hw((motor_all_state_t*)get_motor_now());
-		update_hfi_samples(get_motor_now()->m_conf->foc_hfi_samples, get_motor_now());
+		stop_pwm_hw((motor_all_state_t*)get_motor_now());	// 停机
+		update_hfi_samples(get_motor_now()->m_conf->foc_hfi_samples, get_motor_now());	// 配置HFI，重置FFT
 	}
 
-	virtual_motor_set_configuration(configuration);
+	virtual_motor_set_configuration(configuration);	// 配置HIL电机
 }
 
 mc_state mcpwm_foc_get_state(void) {
@@ -1756,10 +1756,10 @@ int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, fl
 	volatile motor_all_state_t *motor = get_motor_now();
 	int fault = FAULT_CODE_NONE;
 
-	motor->m_phase_override = true;
-	motor->m_phase_now_override = 0.0;
+	motor->m_phase_override = true;		// 强拖标志位
+	motor->m_phase_now_override = 0.0;	// 角度直接锁定0
 	motor->m_id_set = 0.0;
-	motor->m_control_mode = CONTROL_MODE_CURRENT;
+	motor->m_control_mode = CONTROL_MODE_CURRENT;	// 电流闭环
 	motor->m_motor_released = false;
 	motor->m_state = MC_STATE_RUNNING;
 
@@ -1799,11 +1799,11 @@ int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, fl
 	motor->m_samples.sample_num = 0;
 
 	int cnt = 0;
-	while (motor->m_samples.sample_num < samples) {
+	while (motor->m_samples.sample_num < samples) {	// 采样次数控制，实际采样在1ms的线程里执行
 		chThdSleepMilliseconds(1);
 		cnt++;
 		// Timeout
-		if (cnt > 10000) {
+		if (cnt > 10000) {	// 控制溢出
 			break;
 		}
 		fault = mc_interface_get_fault();
@@ -2034,7 +2034,7 @@ int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld
  *
  * @return
  * The fault code
- */ // 设定目标测试电流测试电感
+ */ // 为测试电感，设定目标测试电流
 int mcpwm_foc_measure_inductance_current(float curr_goal, int samples, float *curr, float *ld_lq_diff, float *inductance) {
 	int fault = FAULT_CODE_NONE;
 	float duty_last = 0.0;

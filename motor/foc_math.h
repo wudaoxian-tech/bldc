@@ -134,10 +134,10 @@ typedef enum {
 } foc_pwm_mode;
 
 typedef struct {
-	mc_configuration *m_conf;
-	mc_state m_state;
-	mc_control_mode m_control_mode;
-	motor_state_t m_motor_state;
+	mc_configuration *m_conf;		// 限制值、配置值等
+	mc_state m_state;				// 电机运行的状态机
+	mc_control_mode m_control_mode;	// 转矩控、占空比控制、位置控制、速度控制、开环拖动等
+	motor_state_t m_motor_state;	// FOC 底层实时运算结构体
 	float m_curr_unbalance;
 	float m_currents_adc[3];
 	bool m_phase_override;
