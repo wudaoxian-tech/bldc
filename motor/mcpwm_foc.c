@@ -3277,7 +3277,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 
 				// Compensate from the phase lag caused by the switching frequency. This is important for motors
 				// that run on high ERPM compared to the switching frequency.
-				motor_now->m_phase_now_observer += motor_now->m_pll_speed * dt * (0.5 + conf_now->foc_observer_offset);	// 高频相位滞后补偿
+				motor_now->m_phase_now_observer += motor_now->m_pll_speed * dt * (0.5 + conf_now->foc_observer_offset);	// 观测器的角度，高频相位滞后补偿
 				utils_norm_angle_rad((float*)&motor_now->m_phase_now_observer);
 			}
 
@@ -3602,7 +3602,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 		// pll wind-up protection， PLL 的防积分饱和
 		utils_truncate_number_abs((float*)&motor_now->m_pll_speed, fabsf(motor_now->m_speed_est_fast) * 3.0);
 
-		motor_now->m_phase_before_speed_est = phase_for_speed_est;
+		motor_now->m_phase_before_speed_est = phase_for_speed_est;						// 上一拍的速度
 		motor_now->m_phase_before_speed_est_corrected = motor_now->m_motor_state.phase;
 	}
 
@@ -4408,7 +4408,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 	update_valpha_vbeta(motor, state_m->mod_alpha_raw, state_m->mod_beta_raw);	// 根据电流极性补偿死区时间
 
 	// Dead time compensated values for vd and vq. Note that these are not used to control the switching times.
-	state_m->vd = c * motor->m_motor_state.v_alpha + s * motor->m_motor_state.v_beta;	// 用于观测器
+	state_m->vd = c * motor->m_motor_state.v_alpha + s * motor->m_motor_state.v_beta;	// 死区补偿后的Vd、Vq，不用于发波
 	state_m->vq = c * motor->m_motor_state.v_beta  - s * motor->m_motor_state.v_alpha;
 
 	mc_audio_state *audio = &motor->m_audio;
@@ -4799,7 +4799,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 		mod_beta = v_beta * voltage_normalize;
 	}
 
-	float abs_rpm = fabsf(RADPS2RPM_f(motor->m_speed_est_fast));
+	float abs_rpm = fabsf(RADPS2RPM_f(motor->m_speed_est_fast));	// erpm
 
 	float filter_const = 1.0;
 	if (abs_rpm < 10000.0) {
