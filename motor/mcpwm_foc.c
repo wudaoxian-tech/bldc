@@ -262,7 +262,7 @@ static void timer_reinit(int f_zv) {
 	TIM_ARRPreloadConfig(TIM8, ENABLE);
 
 	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
-
+	// TIM2 产生CC2下降沿用于触发
 	TIM_TimeBaseStructure.TIM_Prescaler = 0;
 	TIM_TimeBaseStructure.TIM_CounterMode = TIM_CounterMode_Up;
 	TIM_TimeBaseStructure.TIM_Period = 0xFFFF;
@@ -401,13 +401,13 @@ void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2) {
 
 	dmaStreamAllocate(STM32_DMA_STREAM(STM32_DMA_STREAM_ID(2, 4)),
 					  5,
-					  (stm32_dmaisr_t)mcpwm_foc_adc_int_handler,
+					  (stm32_dmaisr_t)mcpwm_foc_adc_int_handler,	// DMA半完成中断回调函数
 					  (void *)0);
 
 	DMA_InitStructure.DMA_Channel = DMA_Channel_0;
-	DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)&ADC_Value;
-	DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC->CDR;
-	DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralToMemory;
+	DMA_InitStructure.DMA_Memory0BaseAddr = (uint32_t)&ADC_Value;		// DMA 传输的内存基地址
+	DMA_InitStructure.DMA_PeripheralBaseAddr = (uint32_t)&ADC->CDR;		// DMA 传输的外设基地址
+	DMA_InitStructure.DMA_DIR = DMA_DIR_PeripheralToMemory;				// 外设到内存
 	DMA_InitStructure.DMA_BufferSize = HW_ADC_CHANNELS;
 	DMA_InitStructure.DMA_PeripheralInc = DMA_PeripheralInc_Disable;
 	DMA_InitStructure.DMA_MemoryInc = DMA_MemoryInc_Enable;
@@ -428,26 +428,26 @@ void mcpwm_foc_init(mc_configuration *conf_m1, mc_configuration *conf_m2) {
 	// more cycles to finish it and update the timer before the next zero vector. This helps
 	// at higher f_zv. Only use this if the three first samples are current samples.
 #if ADC_IND_CURR1 < 3 && ADC_IND_CURR2 < 3 && ADC_IND_CURR3 < 3
-	DMA_ITConfig(DMA2_Stream4, DMA_IT_HT, ENABLE);
+	DMA_ITConfig(DMA2_Stream4, DMA_IT_HT, ENABLE);		// 半完成中断回调函数
 #else
 	DMA_ITConfig(DMA2_Stream4, DMA_IT_TC, ENABLE);
 #endif
 
 	// Note that the ADC is running at 42MHz, which is higher than the
 	// specified 36MHz in the data sheet, but it works.
-	ADC_CommonInitStructure.ADC_Mode = ADC_TripleMode_RegSimult;
-	ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div2;
+	ADC_CommonInitStructure.ADC_Mode = ADC_TripleMode_RegSimult;		// 三重模式：同时启动、采样
+	ADC_CommonInitStructure.ADC_Prescaler = ADC_Prescaler_Div2;			// ADC Clock = 84M/2 = 42MHz
 	ADC_CommonInitStructure.ADC_DMAAccessMode = ADC_DMAAccessMode_1;
 	ADC_CommonInitStructure.ADC_TwoSamplingDelay = ADC_TwoSamplingDelay_5Cycles;
 	ADC_CommonInit(&ADC_CommonInitStructure);
 
 	ADC_InitStructure.ADC_Resolution = ADC_Resolution_12b;
-	ADC_InitStructure.ADC_ScanConvMode = ENABLE;
+	ADC_InitStructure.ADC_ScanConvMode = ENABLE;				// 开启扫描模式
 	ADC_InitStructure.ADC_ContinuousConvMode = DISABLE;
 	ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_Falling;
 	ADC_InitStructure.ADC_ExternalTrigConv = ADC_ExternalTrigConv_T2_CC2;	// TIM2 CC2（捕获/比较通道2）触发，
 	ADC_InitStructure.ADC_DataAlign = ADC_DataAlign_Right;
-	ADC_InitStructure.ADC_NbrOfConversion = HW_ADC_NBR_CONV;
+	ADC_InitStructure.ADC_NbrOfConversion = HW_ADC_NBR_CONV;	// = 6，每次每个ADC转换六个
 
 	ADC_Init(ADC1, &ADC_InitStructure);
 	ADC_InitStructure.ADC_ExternalTrigConvEdge = ADC_ExternalTrigConvEdge_None;

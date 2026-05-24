@@ -337,7 +337,7 @@
 #ifdef INVERTED_SHUNT_POLARITY
 #define GET_CURRENT1()		(4095.0 - (float)ADC_Value[ADC_IND_CURR1])
 #else
-#define GET_CURRENT1()		((float)ADC_Value[ADC_IND_CURR1])
+#define GET_CURRENT1()		((float)ADC_Value[ADC_IND_CURR1])   // 相电流1
 #endif
 #endif
 
@@ -345,7 +345,7 @@
 #ifdef INVERTED_SHUNT_POLARITY
 #define GET_CURRENT2()		(4095.0 - (float)ADC_Value[ADC_IND_CURR2])
 #else
-#define GET_CURRENT2()		((float)ADC_Value[ADC_IND_CURR2])
+#define GET_CURRENT2()		((float)ADC_Value[ADC_IND_CURR2])   // 相电流2
 #endif
 #endif
 
@@ -355,7 +355,7 @@
 #ifdef INVERTED_SHUNT_POLARITY
 #define GET_CURRENT3()		(4095.0 - (float)ADC_Value[ADC_IND_CURR3])
 #else
-#define GET_CURRENT3()		((float)ADC_Value[ADC_IND_CURR3])
+#define GET_CURRENT3()		((float)ADC_Value[ADC_IND_CURR3])   // 相电流3
 #endif
 #else
 #define ADC_IND_CURR3		0
