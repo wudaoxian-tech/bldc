@@ -94,9 +94,9 @@
  * 17 (3):  IN3		SENS3
  */
 
-#define HW_ADC_CHANNELS			18
-#define HW_ADC_INJ_CHANNELS		3
-#define HW_ADC_NBR_CONV			6
+#define HW_ADC_CHANNELS			18      // DMA 数据缓冲区（Regular Group 规则组）有 18 个槽位
+#define HW_ADC_INJ_CHANNELS		3     // 3 个注入通道
+#define HW_ADC_NBR_CONV			6       // ADC 负责 6 次转换。因为是三重 ADC 同步采样，3 个 ADC × 6 次转换
 
 // ADC Indexes
 #define ADC_IND_SENS1			3

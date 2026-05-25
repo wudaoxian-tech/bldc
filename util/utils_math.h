@@ -73,7 +73,7 @@ void utils_rotate_vector3(float *input, float *rotation, float *output, bool rev
 #define DEG2RAD_f(deg) ((deg) * (float)(M_PI / 180.0)) // 角度转弧度
 #define RAD2DEG_f(rad) ((rad) * (float)(180.0 / M_PI)) // 弧度转角度
 #define RPM2RADPS_f(rpm) ((rpm) * (float)((2.0 * M_PI) / 60.0)) // 转速转角速度
-#define RADPS2RPM_f(rad_per_sec) ((rad_per_sec) * (float)(60.0 / (2.0 * M_PI))) // 角速度转电转速 erpm/分钟
+#define RADPS2RPM_f(rad_per_sec) ((rad_per_sec) * (float)(60.0 / (2.0 * M_PI))) // 角速度转电转速 erpm
 
 #ifndef MIN
 #define MIN(a,b) (((a)<(b))?(a):(b)) // 返回较小值

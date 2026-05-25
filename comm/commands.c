@@ -562,8 +562,8 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 
 			int32_t ind = 0;
 			uint8_t send_buffer[50];
-			send_buffer[ind++] = packet_id;
-			reply_func(send_buffer, ind);	// 应该是回复上位机
+			send_buffer[ind++] = packet_id;	// 这里packet_id，就是COMM_SET_MCCONF
+			reply_func(send_buffer, ind);	// 回复上位机
 		} else {
 			commands_printf("Warning: Could not set mcconf due to wrong signature");
 		}
