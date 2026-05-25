@@ -4819,7 +4819,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 	mod_alpha = state_m->mod_alpha_filter;
 	mod_beta = state_m->mod_beta_filter;
 
-	if (motor->m_state == MC_STATE_RUNNING) {
+	if (motor->m_state == MC_STATE_RUNNING) {	// 发波：1. 高速用软件算的电压；2. 低速用软件角度+硬件幅值的融合电压
 #ifdef HW_HAS_PHASE_FILTERS	// 如带有硬件相电压低通滤波电路
 		if (conf_now->foc_phase_filter_enable && abs_rpm < conf_now->foc_phase_filter_max_erpm) { // 转速较低时，融合软件与硬件采样占空比的信息
 			float mod_mag = NORM2_f(mod_alpha, mod_beta);
@@ -4850,7 +4850,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 		}
 #endif
 	} else {
-		state_m->v_alpha = v_alpha;		// 不发波，直接使用采样的相电压折算成 α-β 轴电压赋值
+		state_m->v_alpha = v_alpha;		// 不发波：直接使用采样的相电压折算成 α-β 轴电压赋值
 		state_m->v_beta = v_beta;
 		state_m->is_using_phase_filters = false;
 
