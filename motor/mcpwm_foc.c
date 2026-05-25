@@ -4809,7 +4809,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 	float v_mag = NORM2_f(v_alpha, v_beta);			// 基于ADC相电压折算的电压幅值
 	// The 0.1 * v_mag term below compensates for the filter attenuation as the speed increases.
 	// It is chosen by trial and error, so this can be improved.
-	UTILS_LP_FAST(state_m->v_mag_filter, v_mag + 0.1 * v_mag * filter_const, filter_const);	// 0.1 * v_mag 高频下赋值衰减的补偿
+	UTILS_LP_FAST(state_m->v_mag_filter, v_mag + 0.1 * v_mag * filter_const, filter_const);	// 0.1 * v_mag 高频下赋值衰减的补偿，经验数值
 	UTILS_LP_FAST(state_m->mod_alpha_filter, mod_alpha, filter_const);
 	UTILS_LP_FAST(state_m->mod_beta_filter, mod_beta, filter_const);
 	UTILS_NAN_ZERO(state_m->v_mag_filter);
@@ -4821,7 +4821,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 
 	if (motor->m_state == MC_STATE_RUNNING) {
 #ifdef HW_HAS_PHASE_FILTERS	// 如带有硬件相电压低通滤波电路
-		if (conf_now->foc_phase_filter_enable && abs_rpm < conf_now->foc_phase_filter_max_erpm) { // 融合软件与硬件采样占空比的信息
+		if (conf_now->foc_phase_filter_enable && abs_rpm < conf_now->foc_phase_filter_max_erpm) { // 转速较低时，融合软件与硬件采样占空比的信息
 			float mod_mag = NORM2_f(mod_alpha, mod_beta);
 			float v_mag_mod = mod_mag * (2.0 / 3.0) * state_m->v_bus;	// 软件计算的物理电压幅值大小
 
@@ -4833,7 +4833,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 			// Compensate for the phase delay by using the direction of the modulation
 			// together with the magnitude from the phase filters
 			if (mod_mag > 0.04) {	// 如果 mod_mag 非常小（比如接近 0），公式里 mod_alpha / mod_mag 就会发生除以零或者产生极大的浮点数溢出，单片机 FPU 会直接崩溃报错
-				state_m->v_alpha = mod_alpha / mod_mag * state_m->v_mag_filter;	// 提取软件的轴的方向，幅值使用ADC采样的数据
+				state_m->v_alpha = mod_alpha / mod_mag * state_m->v_mag_filter;	// 融合：提取软件的轴的方向，幅值使用ADC采样的数据
 				state_m->v_beta = mod_beta / mod_mag * state_m->v_mag_filter;
 			} else {
 				state_m->v_alpha = v_alpha;
@@ -4842,8 +4842,8 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 
 			state_m->is_using_phase_filters = true;
 		} else {
-#endif
-			state_m->v_alpha = mod_alpha * (2.0 / 3.0) * state_m->v_bus;	// 系统在发波，使用软件补偿后的占空比乘以母线电压，不用 ADC 采到的相电压
+#endif		// 转速超过阈值，电压较高，死区等占比很小，虽然系统在发波，直接使用软件补偿后的占空比乘以母线电压，不用 ADC 采到的相电压（反而不准）
+			state_m->v_alpha = mod_alpha * (2.0 / 3.0) * state_m->v_bus;
 			state_m->v_beta = mod_beta * (2.0 / 3.0) * state_m->v_bus;
 			state_m->is_using_phase_filters = false;
 #ifdef HW_HAS_PHASE_FILTERS
