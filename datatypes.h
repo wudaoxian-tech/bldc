@@ -36,7 +36,7 @@ typedef enum {
    MC_STATE_DETECTING,
    MC_STATE_RUNNING,		// 发波
    MC_STATE_FULL_BRAKE,		// 下桥臂 3 个 MOS 管全开，上桥臂全关，电机三相物理短路
-} mc_state;
+} mc_state;	// 状态机
 
 typedef enum {
 	PWM_MODE_NONSYNCHRONOUS_HISW = 0, // This mode is not recommended
@@ -938,7 +938,7 @@ typedef enum {
 	COMM_SET_HANDBRAKE						= 10,
 	COMM_SET_DETECT							= 11,
 	COMM_SET_SERVO_POS						= 12,
-	COMM_SET_MCCONF							= 13,
+	COMM_SET_MCCONF							= 13,	// 上位机下发参数做配置
 	COMM_GET_MCCONF							= 14,
 	COMM_GET_MCCONF_DEFAULT					= 15,
 	COMM_SET_APPCONF						= 16,
@@ -973,8 +973,8 @@ typedef enum {
 	COMM_GPD_FILL_BUFFER_INT16				= 45,
 	COMM_GPD_SET_BUFFER_INT_SCALE			= 46,
 	COMM_GET_VALUES_SETUP					= 47,
-	COMM_SET_MCCONF_TEMP					= 48,
-	COMM_SET_MCCONF_TEMP_SETUP				= 49,
+	COMM_SET_MCCONF_TEMP					= 48,	// 没有写 Flash 的函数，参数在内存底层 FOC 引擎里瞬间生效，用于调试
+	COMM_SET_MCCONF_TEMP_SETUP				= 49,	// 一样不写 Flash，它会在底层临时旁路掉某些严格的硬件安全限制，用于调试
 	COMM_GET_VALUES_SELECTIVE				= 50,
 	COMM_GET_VALUES_SETUP_SELECTIVE			= 51,
 	COMM_EXT_NRF_PRESENT					= 52,

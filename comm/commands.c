@@ -540,9 +540,9 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 	case COMM_SET_MCCONF: {
 #ifndef	HW_MCCONF_READ_ONLY
 		mc_configuration *mcconf = mempools_alloc_mcconf();
-		*mcconf = *mc_interface_get_configuration();
-
-		if (confgenerator_deserialize_mcconf(data, mcconf)) {
+		*mcconf = *mc_interface_get_configuration();			// 读取原有配置，防御版本不匹配（比如设备有新的配置结构体，但旧版上位机没有）
+		// 上位机下发的参数是，“所见即所得”所有的计算都在上位机完成（但转把曲线的计算都在底层）
+		if (confgenerator_deserialize_mcconf(data, mcconf)) {	// 反序列化函数在解析老数据包时，只会覆盖它认识的参数
 			utils_truncate_number(&mcconf->l_current_max_scale , 0.0, 1.0);
 			utils_truncate_number(&mcconf->l_current_min_scale , 0.0, 1.0);
 
@@ -556,14 +556,14 @@ void commands_process_packet(unsigned char *data, unsigned int len,
 			mcconf->lo_in_current_min = mcconf->l_in_current_min;
 
 			commands_apply_mcconf_hw_limits(mcconf);
-			conf_general_store_mc_configuration(mcconf, mc_interface_get_motor_thread() == 2);
-			mc_interface_set_configuration(mcconf);
+			conf_general_store_mc_configuration(mcconf, mc_interface_get_motor_thread() == 2);	// 将新配置永久存入单片机的 Flash
+			mc_interface_set_configuration(mcconf);		// 将新配置下发给底层的 FOC 引擎，立刻生效
 			chThdSleepMilliseconds(200);
 
 			int32_t ind = 0;
 			uint8_t send_buffer[50];
 			send_buffer[ind++] = packet_id;
-			reply_func(send_buffer, ind);
+			reply_func(send_buffer, ind);	// 应该是回复上位机
 		} else {
 			commands_printf("Warning: Could not set mcconf due to wrong signature");
 		}

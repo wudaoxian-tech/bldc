@@ -303,7 +303,7 @@ const volatile mc_configuration* mc_interface_get_configuration(void) {
 	return &motor_now()->m_conf;
 }
 
-void mc_interface_set_configuration(mc_configuration *configuration) {
+void mc_interface_set_configuration(mc_configuration *configuration) {	// 把配置直接发送FOC底层生效，用于FOC控制
 	volatile motor_if_state_t *motor = motor_now();
 
 #if defined HW_HAS_DUAL_PARALLEL
