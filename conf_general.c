@@ -1200,7 +1200,7 @@ int conf_general_measure_flux_linkage_openloop(float current, float duty, // FOC
 				break;
 			}
 
-			linkage_sum += mcpwm_foc_get_vq() / rad_s_now;	// 在观测器准确工作情况，滑行的反电势完全等于Vq
+			linkage_sum += mcpwm_foc_get_vq() / rad_s_now;	// 滑行的反电势完全等于Vq
 			// 用以下模长计算，可以不用使用观测器，但是会使电流采样噪音在计算模长的平方里累加，但只有Vq时，随机噪音会抵消
 			// Optionally use magnitude
 			//              linkage_sum += sqrtf(SQ(mcpwm_foc_get_vq()) + SQ(mcpwm_foc_get_vd())) / rad_s_now;

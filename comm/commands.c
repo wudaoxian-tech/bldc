@@ -1917,7 +1917,7 @@ int commands_get_fw_version_sent_cnt(void) {
 	return fw_version_sent_cnt;
 }
 
-static THD_FUNCTION(blocking_thread, arg) {
+static THD_FUNCTION(blocking_thread, arg) {	// 按需触发，事件驱动：上位机发送命令触发
 	(void)arg;
 
 	chRegSetThreadName("comm_block");

@@ -1750,7 +1750,7 @@ int mcpwm_foc_encoder_detect(float current, bool print, float *offset, float *ra
  * @return
  * The fault code.
  */
-int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, float *resistance) {
+int mcpwm_foc_measure_resistance(float current, int samples, bool stop_after, float *resistance) {	// 电阻辨识
 	mc_interface_lock();
 
 	volatile motor_all_state_t *motor = get_motor_now();
@@ -1882,7 +1882,7 @@ int mcpwm_foc_measure_inductance(float duty, int samples, float *curr, float *ld
 	stop_pwm_hw((motor_all_state_t*)motor);
 
 	motor->m_conf->foc_sensor_mode = FOC_SENSOR_MODE_HFI;	// V1: 六矢量旋转注入+FFT
-	motor->m_conf->foc_hfi_voltage_start = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;	// 线性内切圆最大值Vbus/SQRT3
+	motor->m_conf->foc_hfi_voltage_start = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;	// 把占空比转换成实际的电压
 	motor->m_conf->foc_hfi_voltage_run = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;
 	motor->m_conf->foc_hfi_voltage_max = duty * mc_interface_get_input_voltage_filtered() * (2.0 / 3.0) * SQRT3_BY_2;
 	motor->m_conf->foc_sl_erpm_hfi = 20000.0;
@@ -2814,7 +2814,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 	(void)flags;
 
 	static int skip = 0;
-	if (++skip == FOC_CONTROL_LOOP_FREQ_DIVIDER) {
+	if (++skip == FOC_CONTROL_LOOP_FREQ_DIVIDER) {	// 相当于于FOC函数执行分频系数
 		skip = 0;
 	} else {
 		return;
@@ -3566,7 +3566,7 @@ void mcpwm_foc_adc_int_handler(void *p, uint32_t flags) { // 双电机情况下�
 	}	// 非RUNNING状态的结尾
 
 	// Calculate duty cycle，就是SVPWM输出的有效时间占比（非零矢量的时间占比）
-	motor_now->m_motor_state.duty_now = SIGN(motor_now->m_motor_state.vq) *
+	motor_now->m_motor_state.duty_now = SIGN(motor_now->m_motor_state.vq) *	// TWO_BY_SQRT3内切圆归一个化系数
 			NORM2_f(motor_now->m_motor_state.mod_d, motor_now->m_motor_state.mod_q) * TWO_BY_SQRT3; // 调制系数，线性区理论最大[-1, 1]，过调制II区[-1.1547, 1.1547]
 
 	float phase_for_speed_est = 0.0;
@@ -4035,7 +4035,7 @@ static void hfi_update(volatile motor_all_state_t *motor, float dt) {	// 在500u
 			commands_send_plot_points(motor->m_hfi_plot_sample, RAD2DEG_f(motor->m_phase_now_encoder) / 4e6);
 			motor->m_hfi_plot_sample++;
 #endif
-		} else {
+		} else {	// HFI_V1注入
 			float real_bin1, imag_bin1, real_bin2, imag_bin2;
 			motor->m_hfi.fft_bin1_func((float*)motor->m_hfi.buffer, &real_bin1, &imag_bin1);
 			motor->m_hfi.fft_bin2_func((float*)motor->m_hfi.buffer, &real_bin2, &imag_bin2);
@@ -4621,7 +4621,7 @@ static void control_current(motor_all_state_t *motor, float dt) {
 				motor->m_hfi.ind++;
 				if (motor->m_hfi.ind == motor->m_hfi.samples) {
 					motor->m_hfi.ind = 0;
-					motor->m_hfi.ready = true;
+					motor->m_hfi.ready = true;	// 一圈的数据已填满
 				}
 				// 旋转注入：获取矢量电压
 				mod_alpha_v7 += hfi_voltage * utils_tab_cos_32_1[motor->m_hfi.ind * motor->m_hfi.table_fact] * voltage_normalize;
@@ -4670,11 +4670,11 @@ static void control_current(motor_all_state_t *motor, float dt) {
 #else
 		CURRENT_FILTER_ON();
 #endif
-		motor->m_hfi.ind = 0;
-		motor->m_hfi.ready = false;	// do_hfi == 0时，把标志位Ready复位
-		motor->m_hfi.is_samp_n = false;
-		motor->m_hfi.prev_sample = 0.0;
-		motor->m_hfi.double_integrator = 0.0;
+		motor->m_hfi.ind = 0;			// HFI V1 用，表示旋转注入表索引
+		motor->m_hfi.ready = false;		// HFI注入采样完成标志
+		motor->m_hfi.is_samp_n = false;	// 正负半周/相邻采样极性的翻转标志
+		motor->m_hfi.prev_sample = 0.0;	// 差分采样标志位
+		motor->m_hfi.double_integrator = 0.0;	// 服务于V2/V3/V4/V5 的 HFI 角度 PLL
 	}
 
 	// Set output (HW Dependent)
