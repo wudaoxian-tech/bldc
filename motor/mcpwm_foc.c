@@ -4850,7 +4850,7 @@ static void update_valpha_vbeta(motor_all_state_t *motor, float mod_alpha, float
 		}
 #endif
 	} else {
-		state_m->v_alpha = v_alpha;		// 不发波：直接使用采样的相电压折算成 α-β 轴电压赋值
+		state_m->v_alpha = v_alpha;		// 不发波：直接使用采样的相电压折算成 α-β 轴电压赋值，这里的相电压可以没有RC滤波
 		state_m->v_beta = v_beta;
 		state_m->is_using_phase_filters = false;
 
